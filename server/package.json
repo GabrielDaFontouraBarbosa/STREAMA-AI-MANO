@@ -1,0 +1,12 @@
+{
+  "name": "screenshare-signaling-server",
+  "version": "1.0.0",
+  "description": "Servidor de sinalização WebSocket para o app de screen share",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

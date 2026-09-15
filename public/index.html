@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Streama aí, Mano!</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif; color: #cdd6f4; margin: 0; min-height: 100vh;
+      padding: 32px 16px; display: flex; justify-content: center;
+      background: radial-gradient(circle at top, #2a2a44 0%, #181825 70%);
+    }
+    .card {
+      width: 100%; max-width: 460px; background: #1e1e2e; border-radius: 16px;
+      padding: 28px 24px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px #313244;
+    }
+    h1 {
+      font-size: 26px; margin: 0; text-align: center; letter-spacing: -0.5px;
+      background: linear-gradient(90deg, #89b4fa, #a6e3a1);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    p.hint { color: #a6adc8; font-size: 13px; text-align: center; margin: 8px 0 0; }
+
+    .tabs {
+      display: flex; gap: 4px; margin: 24px 0 20px; background: #181825;
+      border-radius: 10px; padding: 4px;
+    }
+    .tab-btn {
+      flex: 1; background: none; border: none; color: #a6adc8; font-size: 14px; font-weight: bold;
+      padding: 9px 4px; cursor: pointer; border-radius: 8px; transition: background 0.15s, color 0.15s;
+    }
+    .tab-btn:hover { color: #cdd6f4; }
+    .tab-btn.active { color: #1e1e2e; background: #89b4fa; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: fade-in 0.2s ease; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+    label { display: block; font-size: 12px; color: #a6adc8; margin-bottom: 5px; }
+    input {
+      width: 100%; padding: 9px 10px; margin-bottom: 14px; border-radius: 8px;
+      border: 1px solid #45475a; background: #313244; color: #cdd6f4; font-size: 14px;
+      transition: border-color 0.15s;
+    }
+    input:focus { outline: none; border-color: #89b4fa; }
+    #room-code-input { text-transform: uppercase; letter-spacing: 3px; text-align: center; font-weight: bold; }
+
+    button.action {
+      width: 100%; background: linear-gradient(90deg, #89b4fa, #74c7ec); color: #1e1e2e; border: none;
+      padding: 12px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px;
+      transition: transform 0.1s, box-shadow 0.15s;
+    }
+    button.action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(137, 180, 250, 0.35); }
+    button.action:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #45475a; color: #cdd6f4; }
+
+    #room-info {
+      margin-top: 18px; padding: 16px; background: #313244; border-radius: 10px; display: none; text-align: center;
+    }
+    #room-code { font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #a6e3a1; margin-top: 4px; }
+    #viewer-count { margin-top: 10px; font-size: 13px; color: #a6adc8; }
+
+    #viewer-status { margin: 4px 0 12px; font-size: 13px; color: #a6adc8; text-align: center; }
+    video { width: 100%; margin-top: 4px; border-radius: 10px; border: 1px solid #45475a; display: none; background: #000; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📡 Streama aí, Mano!</h1>
+    <p class="hint">Compartilhe sua tela com a galera via WebRTC, direto do navegador — ninguém instala nada.</p>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-host">🖥️ Transmitir</button>
+      <button class="tab-btn" data-tab="tab-viewer">👀 Assistir</button>
+    </div>
+
+    <!-- ===================== ABA: TRANSMITIR (host) ===================== -->
+    <section id="tab-host" class="tab-panel active">
+      <label for="host-server-url">Endereço do servidor de sinalização</label>
+      <input id="host-server-url" />
+
+      <button id="host-start-btn" class="action">Selecionar tela e transmitir</button>
+      <button id="host-stop-btn" class="action secondary" style="display: none;">Parar transmissão</button>
+
+      <div id="room-info">
+        <div>Passe esse código pra galera:</div>
+        <div id="room-code">------</div>
+        <div id="viewer-count">Nenhum espectador ainda.</div>
+      </div>
+    </section>
+
+    <!-- ===================== ABA: ASSISTIR (viewer) ====================== -->
+    <section id="tab-viewer" class="tab-panel">
+      <label for="viewer-server-url">Endereço do servidor de sinalização</label>
+      <input id="viewer-server-url" />
+
+      <label for="room-code-input">Código da sala</label>
+      <input id="room-code-input" placeholder="CÓDIGO" maxlength="6" />
+      <button id="viewer-join-btn" class="action">Entrar</button>
+
+      <div id="viewer-status"></div>
+      <video id="remote-video" autoplay playsinline></video>
+    </section>
+  </div>
+
+  <script>
+    const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+    // Servidor de sinalização = a própria origem desta página (mesmo host:porta).
+    const DEFAULT_SIGNALING_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+
+    document.getElementById('host-server-url').value = DEFAULT_SIGNALING_URL;
+    document.getElementById('viewer-server-url').value = DEFAULT_SIGNALING_URL;
+
+    // Alternar abas
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      };
+    });
+
+    // ===================== HOST =====================
+    (function setupHost() {
+      const startBtn = document.getElementById('host-start-btn');
+      const stopBtn = document.getElementById('host-stop-btn');
+      const serverUrlInput = document.getElementById('host-server-url');
+      const roomInfoEl = document.getElementById('room-info');
+      const roomCodeEl = document.getElementById('room-code');
+      const viewerCountEl = document.getElementById('viewer-count');
+
+      let localStream = null;
+      let ws = null;
+      const peerConnections = new Map(); // viewerId -> RTCPeerConnection
+
+      function updateViewerCount() {
+        const count = peerConnections.size;
+        viewerCountEl.textContent = count === 0
+          ? 'Nenhum espectador ainda.'
+          : `${count} espectador(es) conectado(s).`;
+      }
+
+      function connectSignaling() {
+        ws = new WebSocket(serverUrlInput.value);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: 'host-create-room' }));
+        };
+
+        ws.onmessage = async (event) => {
+          const msg = JSON.parse(event.data);
+
+          switch (msg.type) {
+            case 'room-created':
+              roomCodeEl.textContent = msg.roomCode;
+              roomInfoEl.style.display = 'block';
+              break;
+
+            case 'viewer-joined':
+              await createOfferForViewer(msg.viewerId);
+              updateViewerCount();
+              break;
+
+            case 'answer': {
+              const pc = peerConnections.get(msg.viewerId);
+              if (pc) await pc.setRemoteDescription(msg.sdp);
+              break;
+            }
+
+            case 'ice-candidate': {
+              const pc = peerConnections.get(msg.viewerId);
+              if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate);
+              break;
+            }
+
+            case 'viewer-left': {
+              const pc = peerConnections.get(msg.viewerId);
+              if (pc) pc.close();
+              peerConnections.delete(msg.viewerId);
+              updateViewerCount();
+              break;
+            }
+          }
+        };
+      }
+
+      async function createOfferForViewer(viewerId) {
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        peerConnections.set(viewerId, pc);
+
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            ws.send(JSON.stringify({ type: 'ice-candidate', viewerId, candidate: event.candidate }));
+          }
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: 'offer', viewerId, sdp: offer }));
+      }
+
+      function stopSharing() {
+        for (const pc of peerConnections.values()) pc.close();
+        peerConnections.clear();
+        localStream?.getTracks().forEach((track) => track.stop());
+        localStream = null;
+        ws?.close();
+        ws = null;
+
+        roomInfoEl.style.display = 'none';
+        startBtn.style.display = 'inline-block';
+        startBtn.disabled = false;
+        stopBtn.style.display = 'none';
+      }
+
+      startBtn.onclick = async () => {
+        // getDisplayMedia() abre o seletor nativo do navegador (tela inteira,
+        // uma janela ou uma aba) — não precisa de nenhum código extra pra isso.
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        } catch {
+          return; // usuário cancelou o seletor
+        }
+        localStream = stream;
+        // Se o usuário clicar em "Parar de compartilhar" na barra do navegador,
+        // trata igual a clicar no nosso botão "Parar transmissão".
+        localStream.getVideoTracks()[0].addEventListener('ended', stopSharing);
+
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        connectSignaling();
+      };
+
+      stopBtn.onclick = stopSharing;
+    })();
+
+    // ===================== VIEWER =====================
+    (function setupViewer() {
+      const joinBtn = document.getElementById('viewer-join-btn');
+      const roomCodeInput = document.getElementById('room-code-input');
+      const serverUrlInput = document.getElementById('viewer-server-url');
+      const statusEl = document.getElementById('viewer-status');
+      const videoEl = document.getElementById('remote-video');
+
+      let ws = null;
+      let pc = null;
+
+      joinBtn.onclick = () => {
+        const roomCode = roomCodeInput.value.trim().toUpperCase();
+        if (!roomCode) return;
+
+        ws = new WebSocket(serverUrlInput.value);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: 'viewer-join', roomCode }));
+          statusEl.textContent = 'Conectando à sala...';
+        };
+
+        ws.onmessage = async (event) => {
+          const msg = JSON.parse(event.data);
+
+          switch (msg.type) {
+            case 'joined':
+              statusEl.textContent = 'Aguardando o host iniciar a transmissão...';
+              setupPeerConnection();
+              break;
+
+            case 'offer': {
+              await pc.setRemoteDescription(msg.sdp);
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
+              break;
+            }
+
+            case 'ice-candidate':
+              if (msg.candidate) await pc.addIceCandidate(msg.candidate);
+              break;
+
+            case 'host-left':
+              statusEl.textContent = 'O host encerrou a transmissão.';
+              videoEl.style.display = 'none';
+              break;
+
+            case 'error':
+              statusEl.textContent = 'Erro: ' + msg.message;
+              break;
+          }
+        };
+      };
+
+      function setupPeerConnection() {
+        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+        pc.ontrack = (event) => {
+          videoEl.srcObject = event.streams[0];
+          videoEl.style.display = 'block';
+          statusEl.textContent = 'Recebendo transmissão ao vivo.';
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
+          }
+        };
+      }
+    })();
+  </script>
+</body>
+</html>
