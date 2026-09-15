@@ -1,0 +1,10 @@
+{
+  "name": "streama-ai-mano",
+  "version": "1.0.0",
+  "description": "Web app for screen sharing via WebRTC",
+  "private": true,
+  "scripts": {
+    "install-server": "cd server && npm install",
+    "start": "cd server && npm start"
+  }
+}
