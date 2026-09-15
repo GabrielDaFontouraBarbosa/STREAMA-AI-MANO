@@ -1,314 +1,273 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Streama aí, Mano!</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
   <style>
+    :root {
+      --bg-base: #0f0f12;
+      --bg-surface: #1a1a22;
+      --bg-elevated: #242430;
+      --border: #3a3a45;
+      --text-primary: #e8e8f0;
+      --text-secondary: #a8a8b8;
+      --accent: #3b82f6;
+      --accent-light: #60a5fa;
+      --success: #10b981;
+      --critical: #ef4444;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-base: #f9f9fc;
+        --bg-surface: #ffffff;
+        --bg-elevated: #f3f3f8;
+        --border: #e0e0e8;
+        --text-primary: #1a1a22;
+        --text-secondary: #6a6a78;
+        --accent: #2563eb;
+        --accent-light: #3b82f6;
+      }
+    }
+
+    :root[data-theme="light"] {
+      --bg-base: #f9f9fc;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f3f3f8;
+      --border: #e0e0e8;
+      --text-primary: #1a1a22;
+      --text-secondary: #6a6a78;
+      --accent: #2563eb;
+      --accent-light: #3b82f6;
+    }
+
     * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      font-family: system-ui, sans-serif; color: #cdd6f4; margin: 0; min-height: 100vh;
-      padding: 32px 16px; display: flex; justify-content: center;
-      background: radial-gradient(circle at top, #2a2a44 0%, #181825 70%);
+      font-family: 'Geist', -apple-system, sans-serif; color: var(--text-primary); 
+      background: var(--bg-base); min-height: 100vh; padding: 20px;
+      display: flex; justify-content: center; align-items: center;
     }
-    .card {
-      width: 100%; max-width: 460px; background: #1e1e2e; border-radius: 16px;
-      padding: 28px 24px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px #313244;
-    }
+
+    .container { width: 100%; max-width: 500px; }
+    .header { text-align: center; margin-bottom: 32px; }
     h1 {
-      font-size: 26px; margin: 0; text-align: center; letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #89b4fa, #a6e3a1);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
+      font-size: 32px; font-weight: 700; margin: 0; letter-spacing: -1px;
+      background: linear-gradient(135deg, #3b82f6, #10b981); 
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     }
-    p.hint { color: #a6adc8; font-size: 13px; text-align: center; margin: 8px 0 0; }
-
-    .tabs {
-      display: flex; gap: 4px; margin: 24px 0 20px; background: #181825;
-      border-radius: 10px; padding: 4px;
+    .hint { color: var(--text-secondary); font-size: 14px; margin: 8px 0 0; line-height: 1.5; }
+    .card {
+      background: var(--bg-surface); border-radius: 16px; padding: 28px 24px;
+      border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     }
+    .tabs { display: flex; gap: 6px; margin: 0 0 24px; background: var(--bg-elevated); border-radius: 12px; padding: 6px; }
     .tab-btn {
-      flex: 1; background: none; border: none; color: #a6adc8; font-size: 14px; font-weight: bold;
-      padding: 9px 4px; cursor: pointer; border-radius: 8px; transition: background 0.15s, color 0.15s;
+      flex: 1; background: transparent; border: none; color: var(--text-secondary); 
+      font-size: 14px; font-weight: 600; padding: 10px 8px; cursor: pointer; 
+      border-radius: 10px; transition: all 0.2s ease;
     }
-    .tab-btn:hover { color: #cdd6f4; }
-    .tab-btn.active { color: #1e1e2e; background: #89b4fa; }
-
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); }
     .tab-panel { display: none; }
-    .tab-panel.active { display: block; animation: fade-in 0.2s ease; }
-    @keyframes fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
-
-    label { display: block; font-size: 12px; color: #a6adc8; margin-bottom: 5px; }
-    input {
-      width: 100%; padding: 9px 10px; margin-bottom: 14px; border-radius: 8px;
-      border: 1px solid #45475a; background: #313244; color: #cdd6f4; font-size: 14px;
-      transition: border-color 0.15s;
-    }
-    input:focus { outline: none; border-color: #89b4fa; }
-    #room-code-input { text-transform: uppercase; letter-spacing: 3px; text-align: center; font-weight: bold; }
-
-    button.action {
-      width: 100%; background: linear-gradient(90deg, #89b4fa, #74c7ec); color: #1e1e2e; border: none;
-      padding: 12px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px;
-      transition: transform 0.1s, box-shadow 0.15s;
-    }
-    button.action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(137, 180, 250, 0.35); }
-    button.action:disabled { opacity: 0.5; cursor: not-allowed; }
-    button.secondary { background: #45475a; color: #cdd6f4; }
-
-    #room-info {
-      margin-top: 18px; padding: 16px; background: #313244; border-radius: 10px; display: none; text-align: center;
-    }
-    #room-code { font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #a6e3a1; margin-top: 4px; }
-    #viewer-count { margin-top: 10px; font-size: 13px; color: #a6adc8; }
-
-    #viewer-status { margin: 4px 0 12px; font-size: 13px; color: #a6adc8; text-align: center; }
-    video { width: 100%; margin-top: 4px; border-radius: 10px; border: 1px solid #45475a; display: none; background: #000; }
+    .tab-panel.active { display: block; animation: slideIn 0.2s ease; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .section { margin-bottom: 20px; }
+    .section:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    input { width: 100%; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); font-size: 14px; font-family: inherit; transition: border-color 0.15s; }
+    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    input::placeholder { color: var(--text-secondary); }
+    .toggle-group { display: flex; gap: 8px; margin-bottom: 12px; }
+    .toggle-btn { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .toggle-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+    button.action { width: 100%; padding: 12px 16px; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+    button.action:hover:not(:disabled) { background: var(--accent-light); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+    button.action:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.action.secondary { background: var(--bg-elevated); color: var(--text-primary); }
+    button.icon-btn { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.15s; }
+    button.icon-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-elevated); }
+    .info-box { margin-top: 16px; padding: 16px; background: var(--bg-elevated); border-radius: 12px; border-left: 3px solid var(--accent); display: none; }
+    .info-box.visible { display: block; animation: slideIn 0.2s ease; }
+    .info-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .info-value { font-size: 24px; font-weight: 700; color: var(--accent); font-family: 'Courier New', monospace; letter-spacing: 2px; }
+    .info-subtext { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+    video { width: 100%; border-radius: 12px; border: 1px solid var(--border); background: #000; display: none; margin-top: 12px; }
+    .button-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .button-row button { flex: 1; }
+    .status { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; background: var(--bg-elevated); color: var(--text-secondary); text-align: center; display: none; }
+    .status.visible { display: block; }
+    .status.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .status.critical { background: rgba(239, 68, 68, 0.1); color: var(--critical); }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>📡 Streama aí, Mano!</h1>
-    <p class="hint">Compartilhe sua tela com a galera via WebRTC, direto do navegador — ninguém instala nada.</p>
-
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="tab-host">🖥️ Transmitir</button>
-      <button class="tab-btn" data-tab="tab-viewer">👀 Assistir</button>
+  <div class="container">
+    <div class="header">
+      <h1>📡 Streama aí, Mano!</h1>
+      <p class="hint">Compartilhe sua tela com a galera via WebRTC, direto do navegador — ninguém instala nada.</p>
     </div>
-
-    <!-- ===================== ABA: TRANSMITIR (host) ===================== -->
-    <section id="tab-host" class="tab-panel active">
-      <label for="host-server-url">Endereço do servidor de sinalização</label>
-      <input id="host-server-url" />
-
-      <button id="host-start-btn" class="action">Selecionar tela e transmitir</button>
-      <button id="host-stop-btn" class="action secondary" style="display: none;">Parar transmissão</button>
-
-      <div id="room-info">
-        <div>Passe esse código pra galera:</div>
-        <div id="room-code">------</div>
-        <div id="viewer-count">Nenhum espectador ainda.</div>
+    <div class="card">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="tab-host">🖥️ Transmitir</button>
+        <button class="tab-btn" data-tab="tab-viewer">👀 Assistir</button>
       </div>
-    </section>
-
-    <!-- ===================== ABA: ASSISTIR (viewer) ====================== -->
-    <section id="tab-viewer" class="tab-panel">
-      <label for="viewer-server-url">Endereço do servidor de sinalização</label>
-      <input id="viewer-server-url" />
-
-      <label for="room-code-input">Código da sala</label>
-      <input id="room-code-input" placeholder="CÓDIGO" maxlength="6" />
-      <button id="viewer-join-btn" class="action">Entrar</button>
-
-      <div id="viewer-status"></div>
-      <video id="remote-video" autoplay playsinline></video>
-    </section>
+      <section id="tab-host" class="tab-panel active">
+        <div class="section"><label for="host-username">Seu nome</label><input id="host-username" placeholder="Digite seu nome" maxlength="30" /></div>
+        <div class="section"><label for="host-server-url">Servidor de sinalização</label><input id="host-server-url" /></div>
+        <div class="section"><label>Modo de transmissão</label><div class="toggle-group"><button class="toggle-btn active" data-mode="screen">🖥️ Tela</button><button class="toggle-btn" data-mode="camera">📹 Câmera</button></div></div>
+        <div class="section"><button id="host-start-btn" class="action">Iniciar transmissão</button><div class="button-row" style="display: none;" id="host-controls"><button id="host-fullscreen-btn" class="icon-btn" title="Tela cheia">⛶</button><button id="host-stop-btn" class="action secondary">Parar</button></div></div>
+        <div id="room-info" class="info-box"><div class="info-label">Código da sala</div><div class="info-value" id="room-code">------</div><div class="info-subtext" id="viewer-count">Nenhum espectador ainda.</div></div>
+      </section>
+      <section id="tab-viewer" class="tab-panel">
+        <div class="section"><label for="viewer-username">Seu nome</label><input id="viewer-username" placeholder="Digite seu nome" maxlength="30" /></div>
+        <div class="section"><label for="viewer-server-url">Servidor de sinalização</label><input id="viewer-server-url" /></div>
+        <div class="section"><label for="room-code-input">Código da sala</label><input id="room-code-input" placeholder="CÓDIGO" maxlength="6" /></div>
+        <div class="section"><button id="viewer-join-btn" class="action">Entrar na sala</button><button id="viewer-fullscreen-btn" class="icon-btn" title="Tela cheia" style="display: none; width: 100%; margin-top: 8px;">⛶ Tela cheia</button></div>
+        <div id="viewer-status" class="status"></div><video id="remote-video" autoplay playsinline></video>
+      </section>
+    </div>
   </div>
-
   <script>
     const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
-    // Servidor de sinalização = a própria origem desta página (mesmo host:porta).
     const DEFAULT_SIGNALING_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-
     document.getElementById('host-server-url').value = DEFAULT_SIGNALING_URL;
     document.getElementById('viewer-server-url').value = DEFAULT_SIGNALING_URL;
-
-    // Alternar abas
-    document.querySelectorAll('.tab-btn').forEach((btn) => {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.onclick = () => {
-        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-        document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById(btn.dataset.tab).classList.add('active');
       };
     });
-
-    // ===================== HOST =====================
+    let captureMode = 'screen';
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        captureMode = btn.dataset.mode;
+      };
+    });
     (function setupHost() {
       const startBtn = document.getElementById('host-start-btn');
       const stopBtn = document.getElementById('host-stop-btn');
+      const fullscreenBtn = document.getElementById('host-fullscreen-btn');
       const serverUrlInput = document.getElementById('host-server-url');
       const roomInfoEl = document.getElementById('room-info');
       const roomCodeEl = document.getElementById('room-code');
       const viewerCountEl = document.getElementById('viewer-count');
-
+      const controlsDiv = document.getElementById('host-controls');
       let localStream = null;
       let ws = null;
-      const peerConnections = new Map(); // viewerId -> RTCPeerConnection
-
+      const peerConnections = new Map();
       function updateViewerCount() {
         const count = peerConnections.size;
-        viewerCountEl.textContent = count === 0
-          ? 'Nenhum espectador ainda.'
-          : `${count} espectador(es) conectado(s).`;
+        viewerCountEl.textContent = count === 0 ? 'Nenhum espectador ainda.' : `${count} espectador(es) conectado(s).`;
       }
-
       function connectSignaling() {
         ws = new WebSocket(serverUrlInput.value);
-
-        ws.onopen = () => {
-          ws.send(JSON.stringify({ type: 'host-create-room' }));
-        };
-
+        ws.onopen = () => { ws.send(JSON.stringify({ type: 'host-create-room' })); };
         ws.onmessage = async (event) => {
           const msg = JSON.parse(event.data);
-
           switch (msg.type) {
-            case 'room-created':
-              roomCodeEl.textContent = msg.roomCode;
-              roomInfoEl.style.display = 'block';
-              break;
-
-            case 'viewer-joined':
-              await createOfferForViewer(msg.viewerId);
-              updateViewerCount();
-              break;
-
-            case 'answer': {
-              const pc = peerConnections.get(msg.viewerId);
-              if (pc) await pc.setRemoteDescription(msg.sdp);
-              break;
-            }
-
-            case 'ice-candidate': {
-              const pc = peerConnections.get(msg.viewerId);
-              if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate);
-              break;
-            }
-
-            case 'viewer-left': {
-              const pc = peerConnections.get(msg.viewerId);
-              if (pc) pc.close();
-              peerConnections.delete(msg.viewerId);
-              updateViewerCount();
-              break;
-            }
+            case 'room-created': roomCodeEl.textContent = msg.roomCode; roomInfoEl.classList.add('visible'); break;
+            case 'viewer-joined': await createOfferForViewer(msg.viewerId); updateViewerCount(); break;
+            case 'answer': { const pc = peerConnections.get(msg.viewerId); if (pc) await pc.setRemoteDescription(msg.sdp); break; }
+            case 'ice-candidate': { const pc = peerConnections.get(msg.viewerId); if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate); break; }
+            case 'viewer-left': { const pc = peerConnections.get(msg.viewerId); if (pc) pc.close(); peerConnections.delete(msg.viewerId); updateViewerCount(); break; }
           }
         };
       }
-
       async function createOfferForViewer(viewerId) {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         peerConnections.set(viewerId, pc);
-
-        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(JSON.stringify({ type: 'ice-candidate', viewerId, candidate: event.candidate }));
-          }
-        };
-
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        pc.onicecandidate = event => { if (event.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', viewerId, candidate: event.candidate })); };
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         ws.send(JSON.stringify({ type: 'offer', viewerId, sdp: offer }));
       }
-
       function stopSharing() {
         for (const pc of peerConnections.values()) pc.close();
         peerConnections.clear();
-        localStream?.getTracks().forEach((track) => track.stop());
+        localStream?.getTracks().forEach(track => track.stop());
         localStream = null;
         ws?.close();
         ws = null;
-
-        roomInfoEl.style.display = 'none';
+        roomInfoEl.classList.remove('visible');
         startBtn.style.display = 'inline-block';
         startBtn.disabled = false;
-        stopBtn.style.display = 'none';
+        controlsDiv.style.display = 'none';
       }
-
       startBtn.onclick = async () => {
-        // getDisplayMedia() abre o seletor nativo do navegador (tela inteira,
-        // uma janela ou uma aba) — não precisa de nenhum código extra pra isso.
         let stream;
         try {
-          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        } catch {
-          return; // usuário cancelou o seletor
-        }
+          if (captureMode === 'camera') {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          } else {
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          }
+        } catch { return; }
         localStream = stream;
-        // Se o usuário clicar em "Parar de compartilhar" na barra do navegador,
-        // trata igual a clicar no nosso botão "Parar transmissão".
-        localStream.getVideoTracks()[0].addEventListener('ended', stopSharing);
-
+        localStream.getTracks()[0].addEventListener('ended', stopSharing);
         startBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-block';
+        controlsDiv.style.display = 'flex';
         connectSignaling();
       };
-
       stopBtn.onclick = stopSharing;
+      fullscreenBtn.onclick = () => {
+        if (document.fullscreenElement) { document.exitFullscreen(); } 
+        else { document.documentElement.requestFullscreen().catch(() => {}); }
+      };
     })();
-
-    // ===================== VIEWER =====================
     (function setupViewer() {
       const joinBtn = document.getElementById('viewer-join-btn');
+      const fullscreenBtn = document.getElementById('viewer-fullscreen-btn');
       const roomCodeInput = document.getElementById('room-code-input');
       const serverUrlInput = document.getElementById('viewer-server-url');
       const statusEl = document.getElementById('viewer-status');
       const videoEl = document.getElementById('remote-video');
-
       let ws = null;
       let pc = null;
-
       joinBtn.onclick = () => {
         const roomCode = roomCodeInput.value.trim().toUpperCase();
         if (!roomCode) return;
-
         ws = new WebSocket(serverUrlInput.value);
-
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: 'viewer-join', roomCode }));
+          statusEl.classList.add('visible');
           statusEl.textContent = 'Conectando à sala...';
         };
-
         ws.onmessage = async (event) => {
           const msg = JSON.parse(event.data);
-
           switch (msg.type) {
-            case 'joined':
-              statusEl.textContent = 'Aguardando o host iniciar a transmissão...';
-              setupPeerConnection();
-              break;
-
-            case 'offer': {
-              await pc.setRemoteDescription(msg.sdp);
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
-              break;
-            }
-
-            case 'ice-candidate':
-              if (msg.candidate) await pc.addIceCandidate(msg.candidate);
-              break;
-
-            case 'host-left':
-              statusEl.textContent = 'O host encerrou a transmissão.';
-              videoEl.style.display = 'none';
-              break;
-
-            case 'error':
-              statusEl.textContent = 'Erro: ' + msg.message;
-              break;
+            case 'joined': statusEl.textContent = 'Aguardando transmissão...'; setupPeerConnection(); break;
+            case 'offer': { await pc.setRemoteDescription(msg.sdp); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); ws.send(JSON.stringify({ type: 'answer', sdp: answer })); break; }
+            case 'ice-candidate': if (msg.candidate) await pc.addIceCandidate(msg.candidate); break;
+            case 'host-left': statusEl.textContent = 'O transmissor saiu.'; videoEl.style.display = 'none'; fullscreenBtn.style.display = 'none'; break;
+            case 'error': statusEl.classList.add('critical'); statusEl.textContent = 'Erro: ' + msg.message; break;
           }
         };
       };
-
       function setupPeerConnection() {
         pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
         pc.ontrack = (event) => {
           videoEl.srcObject = event.streams[0];
           videoEl.style.display = 'block';
-          statusEl.textContent = 'Recebendo transmissão ao vivo.';
+          fullscreenBtn.style.display = 'block';
+          statusEl.classList.add('success');
+          statusEl.textContent = 'Transmissão ao vivo';
         };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
-          }
-        };
+        pc.onicecandidate = (event) => { if (event.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate })); };
       }
+      fullscreenBtn.onclick = () => {
+        if (document.fullscreenElement) { document.exitFullscreen(); } 
+        else { videoEl.requestFullscreen().catch(() => {}); }
+      };
     })();
   </script>
 </body>
