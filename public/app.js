@@ -50,7 +50,10 @@ function toast(text, kind = 'info', ms = 3400) {
     const dark = document.documentElement.dataset.theme
       ? document.documentElement.dataset.theme === 'dark'
       : !matchMedia('(prefers-color-scheme: light)').matches;
-    btn.querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
+    const icon = btn.querySelector('use');
+    icon.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+    btn.setAttribute('aria-label', dark ? 'Modo claro' : 'Modo escuro');
+    btn.title = dark ? 'Mudar para claro' : 'Mudar para escuro';
   };
   paint();
 
