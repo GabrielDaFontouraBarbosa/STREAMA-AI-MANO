@@ -1,0 +1,38 @@
+{
+  "name": "Streama aí, Mano!",
+  "short_name": "Streama aí",
+  "description": "Compartilhe sua tela ou câmera ao vivo via WebRTC. Ponto a ponto, sem cadastro, sem instalar nada.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": ".",
+  "scope": ".",
+  "id": "streama-ai-mano",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#0b0c0e",
+  "theme_color": "#0b0c0e",
+  "categories": ["utilities", "productivity", "social"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Transmitir agora",
+      "short_name": "Transmitir",
+      "description": "Abre direto na aba de transmissão",
+      "url": "./?aba=host",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Entrar numa sala",
+      "short_name": "Assistir",
+      "description": "Abre direto na aba de espectador",
+      "url": "./?aba=viewer",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Streama aí, Mano!">
+  <rect width="512" height="512" rx="112" fill="#0b0c0e"/>
+  <rect x="100" y="150" width="40" height="212" rx="20" fill="#ffb224" opacity=".45"/>
+  <rect x="168" y="106" width="40" height="300" rx="20" fill="#ffb224" opacity=".7"/>
+  <rect x="236" y="62"  width="40" height="388" rx="20" fill="#ffb224"/>
+  <rect x="304" y="106" width="40" height="300" rx="20" fill="#ffb224" opacity=".7"/>
+  <rect x="372" y="150" width="40" height="212" rx="20" fill="#ffb224" opacity=".45"/>
+</svg>

@@ -1,274 +1,256 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Streama aí, Mano!</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
-  <style>
-    :root {
-      --bg-base: #0f0f12;
-      --bg-surface: #1a1a22;
-      --bg-elevated: #242430;
-      --border: #3a3a45;
-      --text-primary: #e8e8f0;
-      --text-secondary: #a8a8b8;
-      --accent: #3b82f6;
-      --accent-light: #60a5fa;
-      --success: #10b981;
-      --critical: #ef4444;
-    }
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Streama aí, Mano! — sua tela ao vivo, direto do navegador</title>
+  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo com a galera via WebRTC. Peer-to-peer, sem cadastro, sem instalar nada." />
 
-    @media (prefers-color-scheme: light) {
-      :root:not([data-theme="dark"]) {
-        --bg-base: #f9f9fc;
-        --bg-surface: #ffffff;
-        --bg-elevated: #f3f3f8;
-        --border: #e0e0e8;
-        --text-primary: #1a1a22;
-        --text-secondary: #6a6a78;
-        --accent: #2563eb;
-        --accent-light: #3b82f6;
-      }
-    }
+  <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
 
-    :root[data-theme="light"] {
-      --bg-base: #f9f9fc;
-      --bg-surface: #ffffff;
-      --bg-elevated: #f3f3f8;
-      --border: #e0e0e8;
-      --text-primary: #1a1a22;
-      --text-secondary: #6a6a78;
-      --accent: #2563eb;
-      --accent-light: #3b82f6;
-    }
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Streama aí" />
 
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body {
-      font-family: 'Geist', -apple-system, sans-serif; color: var(--text-primary); 
-      background: var(--bg-base); min-height: 100vh; padding: 20px;
-      display: flex; justify-content: center; align-items: center;
-    }
+  <meta property="og:title" content="Streama aí, Mano!" />
+  <meta property="og:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
+  <meta property="og:type" content="website" />
 
-    .container { width: 100%; max-width: 500px; }
-    .header { text-align: center; margin-bottom: 32px; }
-    h1 {
-      font-size: 32px; font-weight: 700; margin: 0; letter-spacing: -1px;
-      background: linear-gradient(135deg, #3b82f6, #10b981); 
-      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .hint { color: var(--text-secondary); font-size: 14px; margin: 8px 0 0; line-height: 1.5; }
-    .card {
-      background: var(--bg-surface); border-radius: 16px; padding: 28px 24px;
-      border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    }
-    .tabs { display: flex; gap: 6px; margin: 0 0 24px; background: var(--bg-elevated); border-radius: 12px; padding: 6px; }
-    .tab-btn {
-      flex: 1; background: transparent; border: none; color: var(--text-secondary); 
-      font-size: 14px; font-weight: 600; padding: 10px 8px; cursor: pointer; 
-      border-radius: 10px; transition: all 0.2s ease;
-    }
-    .tab-btn:hover { color: var(--text-primary); }
-    .tab-btn.active { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; animation: slideIn 0.2s ease; }
-    @keyframes slideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    .section { margin-bottom: 20px; }
-    .section:last-child { margin-bottom: 0; }
-    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-    input { width: 100%; padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); font-size: 14px; font-family: inherit; transition: border-color 0.15s; }
-    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-    input::placeholder { color: var(--text-secondary); }
-    .toggle-group { display: flex; gap: 8px; margin-bottom: 12px; }
-    .toggle-btn { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-    .toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
-    .toggle-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
-    button.action { width: 100%; padding: 12px 16px; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
-    button.action:hover:not(:disabled) { background: var(--accent-light); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
-    button.action:disabled { opacity: 0.6; cursor: not-allowed; }
-    button.action.secondary { background: var(--bg-elevated); color: var(--text-primary); }
-    button.icon-btn { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.15s; }
-    button.icon-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-elevated); }
-    .info-box { margin-top: 16px; padding: 16px; background: var(--bg-elevated); border-radius: 12px; border-left: 3px solid var(--accent); display: none; }
-    .info-box.visible { display: block; animation: slideIn 0.2s ease; }
-    .info-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-    .info-value { font-size: 24px; font-weight: 700; color: var(--accent); font-family: 'Courier New', monospace; letter-spacing: 2px; }
-    .info-subtext { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
-    video { width: 100%; border-radius: 12px; border: 1px solid var(--border); background: #000; display: none; margin-top: 12px; }
-    .button-row { display: flex; gap: 8px; margin-bottom: 12px; }
-    .button-row button { flex: 1; }
-    .status { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; background: var(--bg-elevated); color: var(--text-secondary); text-align: center; display: none; }
-    .status.visible { display: block; }
-    .status.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-    .status.critical { background: rgba(239, 68, 68, 0.1); color: var(--critical); }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=JetBrains+Mono:wght@400..700&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>📡 Streama aí, Mano!</h1>
-      <p class="hint">Compartilhe sua tela com a galera via WebRTC, direto do navegador — ninguém instala nada.</p>
-    </div>
-    <div class="card">
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="tab-host">🖥️ Transmitir</button>
-        <button class="tab-btn" data-tab="tab-viewer">👀 Assistir</button>
-      </div>
-      <section id="tab-host" class="tab-panel active">
-        <div class="section"><label for="host-username">Seu nome</label><input id="host-username" placeholder="Digite seu nome" maxlength="30" /></div>
-        <div class="section"><label for="host-server-url">Servidor de sinalização</label><input id="host-server-url" /></div>
-        <div class="section"><label>Modo de transmissão</label><div class="toggle-group"><button class="toggle-btn active" data-mode="screen">🖥️ Tela</button><button class="toggle-btn" data-mode="camera">📹 Câmera</button></div></div>
-        <div class="section"><button id="host-start-btn" class="action">Iniciar transmissão</button><div class="button-row" style="display: none;" id="host-controls"><button id="host-fullscreen-btn" class="icon-btn" title="Tela cheia">⛶</button><button id="host-stop-btn" class="action secondary">Parar</button></div></div>
-        <div id="room-info" class="info-box"><div class="info-label">Código da sala</div><div class="info-value" id="room-code">------</div><div class="info-subtext" id="viewer-count">Nenhum espectador ainda.</div></div>
-      </section>
-      <section id="tab-viewer" class="tab-panel">
-        <div class="section"><label for="viewer-username">Seu nome</label><input id="viewer-username" placeholder="Digite seu nome" maxlength="30" /></div>
-        <div class="section"><label for="viewer-server-url">Servidor de sinalização</label><input id="viewer-server-url" /></div>
-        <div class="section"><label for="room-code-input">Código da sala</label><input id="room-code-input" placeholder="CÓDIGO" maxlength="6" /></div>
-        <div class="section"><button id="viewer-join-btn" class="action">Entrar na sala</button><button id="viewer-fullscreen-btn" class="icon-btn" title="Tela cheia" style="display: none; width: 100%; margin-top: 8px;">⛶ Tela cheia</button></div>
-        <div id="viewer-status" class="status"></div><video id="remote-video" autoplay playsinline></video>
-      </section>
-    </div>
+
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-screen" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="1.5"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M15 8.5 22 5v14l-7-3.5z"/><rect x="2" y="5" width="13" height="14" rx="2"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M3 9V4h5M21 9V4h-5M3 15v5h5M21 15v5h-5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24"><path d="M9 9v1a3 3 0 0 0 4.2 2.8M15 11V5a3 3 0 0 0-5.9-.7"/><path d="M5 10a7 7 0 0 0 10.7 6M19 10a7 7 0 0 1-.8 3.2M12 17v5"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-pip" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2.5M12 20v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M1.5 12H4M20 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13.2A9 9 0 1 1 10.8 3a7 7 0 0 0 10.2 10.2z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></symbol>
+</svg>
+
+<canvas id="grain" aria-hidden="true"></canvas>
+<div class="scanlines" aria-hidden="true"></div>
+
+<a href="#console" class="skip">Pular para o console</a>
+
+<header class="topbar">
+  <a class="brand" href="#top">
+    <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="brand-name">Streama aí<span class="brand-dim">, Mano!</span></span>
+  </a>
+  <div class="topbar-right">
+    <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label">offline</span></span>
+    <button id="install-btn" class="btn btn-quiet" hidden><svg class="ic"><use href="#i-download"/></svg>Instalar</button>
+    <button id="theme-btn" class="iconbtn" aria-label="Alternar tema"><svg class="ic"><use href="#i-sun"/></svg></button>
   </div>
-  <script>
-    const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
-    const DEFAULT_SIGNALING_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-    document.getElementById('host-server-url').value = DEFAULT_SIGNALING_URL;
-    document.getElementById('viewer-server-url').value = DEFAULT_SIGNALING_URL;
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById(btn.dataset.tab).classList.add('active');
-      };
-    });
-    let captureMode = 'screen';
-    document.querySelectorAll('.toggle-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        captureMode = btn.dataset.mode;
-      };
-    });
-    (function setupHost() {
-      const startBtn = document.getElementById('host-start-btn');
-      const stopBtn = document.getElementById('host-stop-btn');
-      const fullscreenBtn = document.getElementById('host-fullscreen-btn');
-      const serverUrlInput = document.getElementById('host-server-url');
-      const roomInfoEl = document.getElementById('room-info');
-      const roomCodeEl = document.getElementById('room-code');
-      const viewerCountEl = document.getElementById('viewer-count');
-      const controlsDiv = document.getElementById('host-controls');
-      let localStream = null;
-      let ws = null;
-      const peerConnections = new Map();
-      function updateViewerCount() {
-        const count = peerConnections.size;
-        viewerCountEl.textContent = count === 0 ? 'Nenhum espectador ainda.' : `${count} espectador(es) conectado(s).`;
-      }
-      function connectSignaling() {
-        ws = new WebSocket(serverUrlInput.value);
-        ws.onopen = () => { ws.send(JSON.stringify({ type: 'host-create-room' })); };
-        ws.onmessage = async (event) => {
-          const msg = JSON.parse(event.data);
-          switch (msg.type) {
-            case 'room-created': roomCodeEl.textContent = msg.roomCode; roomInfoEl.classList.add('visible'); break;
-            case 'viewer-joined': await createOfferForViewer(msg.viewerId); updateViewerCount(); break;
-            case 'answer': { const pc = peerConnections.get(msg.viewerId); if (pc) await pc.setRemoteDescription(msg.sdp); break; }
-            case 'ice-candidate': { const pc = peerConnections.get(msg.viewerId); if (pc && msg.candidate) await pc.addIceCandidate(msg.candidate); break; }
-            case 'viewer-left': { const pc = peerConnections.get(msg.viewerId); if (pc) pc.close(); peerConnections.delete(msg.viewerId); updateViewerCount(); break; }
-          }
-        };
-      }
-      async function createOfferForViewer(viewerId) {
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        peerConnections.set(viewerId, pc);
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        pc.onicecandidate = event => { if (event.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', viewerId, candidate: event.candidate })); };
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: 'offer', viewerId, sdp: offer }));
-      }
-      function stopSharing() {
-        for (const pc of peerConnections.values()) pc.close();
-        peerConnections.clear();
-        localStream?.getTracks().forEach(track => track.stop());
-        localStream = null;
-        ws?.close();
-        ws = null;
-        roomInfoEl.classList.remove('visible');
-        startBtn.style.display = 'inline-block';
-        startBtn.disabled = false;
-        controlsDiv.style.display = 'none';
-      }
-      startBtn.onclick = async () => {
-        let stream;
-        try {
-          if (captureMode === 'camera') {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          } else {
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-          }
-        } catch { return; }
-        localStream = stream;
-        localStream.getTracks()[0].addEventListener('ended', stopSharing);
-        startBtn.style.display = 'none';
-        controlsDiv.style.display = 'flex';
-        connectSignaling();
-      };
-      stopBtn.onclick = stopSharing;
-      fullscreenBtn.onclick = () => {
-        if (document.fullscreenElement) { document.exitFullscreen(); } 
-        else { document.documentElement.requestFullscreen().catch(() => {}); }
-      };
-    })();
-    (function setupViewer() {
-      const joinBtn = document.getElementById('viewer-join-btn');
-      const fullscreenBtn = document.getElementById('viewer-fullscreen-btn');
-      const roomCodeInput = document.getElementById('room-code-input');
-      const serverUrlInput = document.getElementById('viewer-server-url');
-      const statusEl = document.getElementById('viewer-status');
-      const videoEl = document.getElementById('remote-video');
-      let ws = null;
-      let pc = null;
-      joinBtn.onclick = () => {
-        const roomCode = roomCodeInput.value.trim().toUpperCase();
-        if (!roomCode) return;
-        ws = new WebSocket(serverUrlInput.value);
-        ws.onopen = () => {
-          ws.send(JSON.stringify({ type: 'viewer-join', roomCode }));
-          statusEl.classList.add('visible');
-          statusEl.textContent = 'Conectando à sala...';
-        };
-        ws.onmessage = async (event) => {
-          const msg = JSON.parse(event.data);
-          switch (msg.type) {
-            case 'joined': statusEl.textContent = 'Aguardando transmissão...'; setupPeerConnection(); break;
-            case 'offer': { await pc.setRemoteDescription(msg.sdp); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); ws.send(JSON.stringify({ type: 'answer', sdp: answer })); break; }
-            case 'ice-candidate': if (msg.candidate) await pc.addIceCandidate(msg.candidate); break;
-            case 'host-left': statusEl.textContent = 'O transmissor saiu.'; videoEl.style.display = 'none'; fullscreenBtn.style.display = 'none'; break;
-            case 'error': statusEl.classList.add('critical'); statusEl.textContent = 'Erro: ' + msg.message; break;
-          }
-        };
-      };
-      function setupPeerConnection() {
-        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        pc.ontrack = (event) => {
-          videoEl.srcObject = event.streams[0];
-          videoEl.style.display = 'block';
-          fullscreenBtn.style.display = 'block';
-          statusEl.classList.add('success');
-          statusEl.textContent = 'Transmissão ao vivo';
-        };
-        pc.onicecandidate = (event) => { if (event.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate })); };
-      }
-      fullscreenBtn.onclick = () => {
-        if (document.fullscreenElement) { document.exitFullscreen(); } 
-        else { videoEl.requestFullscreen().catch(() => {}); }
-      };
-    })();
-  </script>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <canvas id="wave" aria-hidden="true"></canvas>
+    <div class="hero-inner">
+      <p class="eyebrow reveal"><span class="tick"></span>WebRTC · ponto a ponto · sem instalar nada</p>
+      <h1 class="reveal">Sua tela,<br><em>ao vivo</em>, pra geral.</h1>
+      <p class="lede reveal">Abre uma sala, manda o código pros amigos, pronto. O vídeo sai do seu navegador direto pro deles — sem passar por servidor, sem cadastro, sem app.</p>
+      <div class="hero-cta reveal">
+        <a href="#console" class="btn btn-primary btn-lg">Começar a transmitir</a>
+        <a href="#como" class="btn btn-quiet btn-lg">Como funciona</a>
+      </div>
+      <dl class="hero-stats reveal">
+        <div><dt>Latência</dt><dd>&lt; 1s</dd></div>
+        <div><dt>Servidor vê</dt><dd>0 bytes</dd></div>
+        <div><dt>Instalação</dt><dd>nenhuma</dd></div>
+      </dl>
+    </div>
+    <div class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </section>
+
+  <section id="console" class="console-wrap">
+    <div class="console frame">
+
+      <div class="console-head">
+        <span class="rec"><span class="rec-dot"></span>CONSOLE</span>
+        <span class="console-head-sep"></span>
+        <span id="room-tag" class="mono dim">sem sala</span>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" data-tab="host">
+          <svg class="ic"><use href="#i-screen"/></svg>Transmitir
+        </button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="viewer">
+          <svg class="ic"><use href="#i-cam"/></svg>Assistir
+        </button>
+        <span class="tab-ink" aria-hidden="true"></span>
+      </div>
+
+      <!-- ── TRANSMITIR ────────────────────────────────── -->
+      <section id="pane-host" class="pane active" role="tabpanel">
+
+        <div id="host-setup">
+          <div class="field">
+            <label for="host-name">Seu nome</label>
+            <input id="host-name" placeholder="Como a galera vai te ver" maxlength="24" autocomplete="nickname" />
+          </div>
+
+          <div class="field">
+            <label>Fonte</label>
+            <div class="segmented" data-group="mode">
+              <button class="seg active" data-mode="screen"><svg class="ic"><use href="#i-screen"/></svg>Tela</button>
+              <button class="seg" data-mode="camera"><svg class="ic"><use href="#i-cam"/></svg>Câmera</button>
+            </div>
+          </div>
+
+          <label class="check">
+            <input type="checkbox" id="host-audio" checked />
+            <span class="check-box"></span>
+            <span class="check-text">Transmitir áudio<em>Som da aba ou do microfone</em></span>
+          </label>
+
+          <details class="adv">
+            <summary>Ajustes avançados</summary>
+            <div class="field">
+              <label for="host-server">Servidor de sinalização</label>
+              <input id="host-server" class="mono" spellcheck="false" />
+            </div>
+          </details>
+
+          <button id="host-start" class="btn btn-primary btn-block btn-lg">
+            <span class="rec-dot"></span>Abrir sala e transmitir
+          </button>
+        </div>
+
+        <div id="host-live" hidden>
+          <div class="codebox frame">
+            <div class="codebox-label">Código da sala</div>
+            <div id="room-code" class="codebox-value mono">------</div>
+            <div class="codebox-actions">
+              <button id="copy-code" class="btn btn-quiet"><svg class="ic"><use href="#i-copy"/></svg>Copiar código</button>
+              <button id="copy-link" class="btn btn-quiet"><svg class="ic"><use href="#i-share"/></svg>Copiar convite</button>
+            </div>
+          </div>
+
+          <video id="local-video" class="stage" autoplay playsinline muted></video>
+
+          <div class="ctrlbar">
+            <button id="host-mic" class="iconbtn" aria-label="Mudo" title="Mudo (M)"><svg class="ic"><use href="#i-mic"/></svg></button>
+            <button id="host-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
+            <button id="host-stop" class="btn btn-danger btn-grow"><svg class="ic"><use href="#i-stop"/></svg>Encerrar</button>
+          </div>
+
+          <div class="viewers">
+            <div class="viewers-head"><span>Na sala</span><span id="viewer-n" class="count">0</span></div>
+            <ul id="viewer-list" class="viewer-list"><li class="empty">Esperando alguém entrar…</li></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── ASSISTIR ──────────────────────────────────── -->
+      <section id="pane-viewer" class="pane" role="tabpanel">
+
+        <div id="viewer-setup">
+          <div class="field">
+            <label for="viewer-name">Seu nome</label>
+            <input id="viewer-name" placeholder="Como o pessoal vai te ver" maxlength="24" autocomplete="nickname" />
+          </div>
+
+          <div class="field">
+            <label for="room-input">Código da sala</label>
+            <input id="room-input" class="mono code-input" placeholder="A1B2C3" maxlength="6" spellcheck="false" autocapitalize="characters" />
+          </div>
+
+          <details class="adv">
+            <summary>Ajustes avançados</summary>
+            <div class="field">
+              <label for="viewer-server">Servidor de sinalização</label>
+              <input id="viewer-server" class="mono" spellcheck="false" />
+            </div>
+          </details>
+
+          <button id="viewer-join" class="btn btn-primary btn-block btn-lg">Entrar na sala</button>
+        </div>
+
+        <div id="viewer-live" hidden>
+          <div id="tuning" class="tuning"><span></span><span></span><span></span><p>Sintonizando…</p></div>
+          <video id="remote-video" class="stage" autoplay playsinline></video>
+          <div class="ctrlbar">
+            <button id="viewer-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
+            <button id="viewer-pip" class="iconbtn" aria-label="Picture-in-picture" title="Janela flutuante (P)"><svg class="ic"><use href="#i-pip"/></svg></button>
+            <button id="viewer-leave" class="btn btn-quiet btn-grow">Sair da sala</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── CHAT ──────────────────────────────────────── -->
+      <div id="chat" class="chat" hidden>
+        <div class="chat-head"><svg class="ic"><use href="#i-chat"/></svg>Papo da sala</div>
+        <ul id="chat-log" class="chat-log"></ul>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" placeholder="Manda ver…" maxlength="300" autocomplete="off" />
+          <button class="iconbtn" aria-label="Enviar"><svg class="ic"><use href="#i-send"/></svg></button>
+        </form>
+      </div>
+
+    </div>
+
+    <p class="shortcuts mono">
+      <kbd>F</kbd> tela cheia · <kbd>M</kbd> mudo · <kbd>P</kbd> flutuante · <kbd>C</kbd> copiar código
+    </p>
+  </section>
+
+  <section id="como" class="features">
+    <h2 class="reveal">Feito pra ser simples</h2>
+    <div class="grid">
+      <article class="card frame reveal">
+        <svg class="ic ic-lg"><use href="#i-lock"/></svg>
+        <h3>O vídeo não passa por aqui</h3>
+        <p>A conexão é direta entre os navegadores. O servidor só apresenta um ao outro e sai de cena — ele nunca vê um frame do que você transmite.</p>
+      </article>
+      <article class="card frame reveal">
+        <svg class="ic ic-lg"><use href="#i-bolt"/></svg>
+        <h3>Zero instalação</h3>
+        <p>Abre o link, clica, transmite. Funciona em qualquer navegador moderno, no computador ou no celular, sem plugin nem cadastro.</p>
+      </article>
+      <article class="card frame reveal">
+        <svg class="ic ic-lg"><use href="#i-download"/></svg>
+        <h3>Vira app de verdade</h3>
+        <p>Instala como atalho no seu sistema e abre em janela própria, sem barra de endereço. Mesmo app, cara de programa nativo.</p>
+      </article>
+      <article class="card frame reveal">
+        <svg class="ic ic-lg"><use href="#i-chat"/></svg>
+        <h3>Papo junto</h3>
+        <p>Chat embutido na sala pra comentar sem precisar de outro aplicativo aberto do lado.</p>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="bars sm" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <p class="mono dim">Streama aí, Mano! — WebRTC + WebSocket, e mais nada.</p>
+</footer>
+
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+<script src="app.js" type="module"></script>
 </body>
 </html>
