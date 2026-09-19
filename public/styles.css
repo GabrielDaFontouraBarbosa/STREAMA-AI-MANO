@@ -287,6 +287,7 @@ img, video { max-width: 100%; }
 .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--live) 12%, transparent); }
 
 .btn-lg    { padding: 13px 22px; font-size: 14.5px; }
+.btn-sm    { padding: 6px 11px; font-size: 12px; flex: none; }
 .btn-block { width: 100%; }
 .btn-grow  { flex: 1; }
 
@@ -397,7 +398,12 @@ h1 em::after {
   padding: clamp(44px, 8vw, 80px) clamp(16px, 4vw, 34px);
   max-width: 620px; margin: 0 auto;
   scroll-margin-top: 70px;
+  transition: max-width .4s var(--ease-out);
 }
+
+/* Assistindo, a sala ganha espaço: o vídeo é o motivo de estar aqui. */
+.console-wrap.wide { max-width: 960px; }
+.console-wrap.wide .stage { min-height: 320px; }
 
 .console {
   border-radius: var(--r-lg);
@@ -647,6 +653,53 @@ input::placeholder { color: var(--ink-3); opacity: .7; }
   background: var(--signal);
 }
 
+/* ── 13b. Amigos ───────────────────────────────────────────── */
+
+.myid-box { padding: 18px; margin-bottom: 20px; }
+.myid-label {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-3); margin-bottom: 10px;
+}
+.myid-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.myid-value {
+  font-size: 18px !important; font-weight: 700;
+  letter-spacing: .18em; color: var(--signal);
+  text-align: center; padding: 10px 12px !important;
+  cursor: text;
+}
+.myid-hint { margin: 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+
+.add-friend {
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  padding: 18px 0; margin-bottom: 18px;
+}
+.add-friend .btn { margin-top: 4px; }
+
+.friend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.friend-list li.empty {
+  color: var(--ink-3); font-weight: 400; font-style: italic;
+  text-align: center; padding: 16px 12px; background: none;
+  border: 1px dashed var(--rule); border-radius: var(--r);
+  font-size: 13px;
+}
+.friend-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; background: var(--bg-2);
+  border: 1px solid var(--rule); border-radius: var(--r);
+  animation: paneIn .3s var(--ease-out) both;
+}
+.friend-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--ink-3);
+}
+.friend-dot[data-status="live"] { background: var(--live); animation: blink 1.3s steps(1) infinite; }
+.friend-dot[data-status="idle"] { background: var(--ok); }
+.friend-name { flex: 1; font-size: 13.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-rm { width: 30px; height: 30px; }
+.friend-rm:hover { color: var(--live); border-color: var(--live); }
+
 /* ── 14. Chat ──────────────────────────────────────────────── */
 
 .chat { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 16px; }
@@ -748,6 +801,7 @@ kbd {
   box-shadow: 0 12px 30px -10px rgba(0,0,0,.6);
   font-size: 13.5px; font-weight: 600;
   animation: toastIn .34s var(--ease-out) both;
+  pointer-events: auto;
 }
 .toast.out { animation: toastOut .26s var(--ease) both; }
 .toast::before {
@@ -756,6 +810,13 @@ kbd {
 }
 .toast[data-kind="ok"]::before   { background: var(--ok); }
 .toast[data-kind="err"]::before  { background: var(--live); }
+
+.toast-request {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.toast-request span { flex: 1 1 100%; margin-bottom: 2px; }
+.toast-request .btn { flex: 1; }
 @keyframes toastIn  { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes toastOut { to   { opacity: 0; transform: translateY(8px) scale(.97); } }
 

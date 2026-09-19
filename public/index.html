@@ -43,6 +43,10 @@
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1.5" fill="none" stroke-width="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="16" r="1" fill="currentColor"/></symbol>
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2l-7 12h6l-1 8 8-12h-6l1-8z" fill="none" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H7l-4 2.5v-6.5A8 8 0 0 1 11 3h2a8 8 0 0 1 8 8z" fill="none" stroke-width="1.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" fill="none" stroke-width="1.5"/><path d="M3 20v-1c0-2.8 2.5-5 6-5s6 2.2 6 5v1" fill="none" stroke-width="1.5" stroke-linecap="round"/><path d="M16 4.3a3.2 3.2 0 0 1 0 6.2M20 20v-1c0-2.4-1.8-4.4-4.3-4.9" fill="none" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19" stroke-width="1.75" stroke-linecap="round"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M17 3v6H7M7 21v-6h10" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 9a6 6 0 0 1 10-4.5M21 15a6 6 0 0 1-10 4.5" fill="none" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.2" fill="none" stroke-width="1.5"/><path d="M11.2 11.8 20 3M16 6l2.5 2.5M13 9l2 2" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
 <canvas id="grain" aria-hidden="true"></canvas>
@@ -99,6 +103,9 @@
         <button class="tab" role="tab" aria-selected="false" data-tab="viewer">
           <svg class="ic"><use href="#i-cam"/></svg>Assistir
         </button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="friends">
+          <svg class="ic"><use href="#i-users"/></svg>Amigos
+        </button>
         <span class="tab-ink" aria-hidden="true"></span>
       </div>
 
@@ -152,6 +159,7 @@
 
           <div class="ctrlbar">
             <button id="host-mic" class="iconbtn" aria-label="Mudo" title="Mudo (M)"><svg class="ic"><use href="#i-mic"/></svg></button>
+            <button id="host-switch" class="iconbtn" aria-label="Trocar fonte" title="Trocar pra câmera (S)"><svg class="ic"><use href="#i-swap"/></svg></button>
             <button id="host-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
             <button id="host-stop" class="btn btn-danger btn-grow"><svg class="ic"><use href="#i-stop"/></svg>Encerrar</button>
           </div>
@@ -199,6 +207,43 @@
         </div>
       </section>
 
+      <!-- ── AMIGOS ────────────────────────────────────── -->
+      <section id="pane-friends" class="pane" role="tabpanel">
+
+        <div class="myid-box frame">
+          <div class="myid-label"><svg class="ic"><use href="#i-key"/></svg>Seu código de amigo</div>
+          <div class="myid-row">
+            <input id="my-id" class="mono myid-value" readonly />
+            <button id="my-id-copy" class="btn btn-quiet"><svg class="ic"><use href="#i-copy"/></svg>Copiar</button>
+          </div>
+          <p class="myid-hint">Manda esse código pros seus amigos pra eles te adicionarem. Ninguém acha sua sala sem ele.</p>
+        </div>
+
+        <div class="field">
+          <label for="friends-name">Seu nome (visível pros amigos)</label>
+          <input id="friends-name" placeholder="Como te reconhecerem" maxlength="24" autocomplete="nickname" />
+        </div>
+
+        <div class="add-friend">
+          <div class="field">
+            <label for="friend-add-id">Código do amigo</label>
+            <input id="friend-add-id" class="mono" placeholder="A1B2C3D4" maxlength="8" spellcheck="false" autocapitalize="characters" />
+          </div>
+          <div class="field">
+            <label for="friend-add-name">Apelido (opcional)</label>
+            <input id="friend-add-name" placeholder="Pra você lembrar quem é" maxlength="24" />
+          </div>
+          <button id="friend-add-btn" class="btn btn-primary btn-block">
+            <svg class="ic"><use href="#i-users"/></svg>Adicionar amigo
+          </button>
+        </div>
+
+        <div class="friends">
+          <div class="viewers-head"><span>Seus amigos</span><span id="friend-n" class="count">0</span></div>
+          <ul id="friend-list" class="friend-list"><li class="empty">Nenhum amigo ainda. Compartilhe seu código!</li></ul>
+        </div>
+      </section>
+
       <!-- ── CHAT ──────────────────────────────────────── -->
       <div id="chat" class="chat" hidden>
         <div class="chat-head"><svg class="ic"><use href="#i-chat"/></svg>Papo da sala</div>
@@ -212,7 +257,7 @@
     </div>
 
     <p class="shortcuts mono">
-      <kbd>F</kbd> tela cheia · <kbd>M</kbd> mudo · <kbd>P</kbd> flutuante · <kbd>C</kbd> copiar código
+      <kbd>F</kbd> tela cheia · <kbd>M</kbd> mudo · <kbd>S</kbd> trocar fonte · <kbd>P</kbd> flutuante · <kbd>C</kbd> copiar código
     </p>
   </section>
 

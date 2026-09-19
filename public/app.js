@@ -25,6 +25,23 @@ const prefs = {
   },
 };
 
+/* Identidade local: um código de 8 caracteres gerado uma vez e guardado
+   no navegador. É o "seu id" que os amigos usam pra te reconhecer —
+   nunca sai daqui sem você compartilhar, e o servidor não liga isso a
+   nenhum outro dado seu. */
+const MY_ID = (function () {
+  let id = prefs.read('myid', null);
+  if (!id || !/^[0-9A-F]{8}$/.test(id)) {
+    id = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+    prefs.write('myid', id);
+  }
+  return id;
+})();
+
+function currentName() {
+  return prefs.read('name', '').trim() || 'Anônimo';
+}
+
 /* ── Avisos ────────────────────────────────────────────────── */
 
 function toast(text, kind = 'info', ms = 3400) {
@@ -350,6 +367,60 @@ const chat = (function () {
   return { attach, detach, push };
 })();
 
+/* ── Conexão social (presença de amigos) ───────────────────── */
+
+/* Fica aberta a sessão inteira, separada da conexão de sinalização de
+   sala — assim dá pra receber pedido de entrada mesmo sem ter aberto
+   a aba Amigos, e a lista de amigos atualiza mesmo fora dela. */
+const social = (function () {
+  let ws = null;
+  let lastWatch = [];
+  let retryDelay = 1500;
+  const onPresence = new Set();
+  const onRequest = new Set();
+  const onResponse = new Set();
+
+  function send(msg) {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }
+
+  function identify() {
+    send({ type: 'identify', id: MY_ID, name: currentName() });
+  }
+
+  function connect() {
+    ws = new WebSocket(DEFAULT_WS);
+    ws.onopen = () => {
+      retryDelay = 1500;
+      identify();
+      if (lastWatch.length) send({ type: 'watch-friends', ids: lastWatch });
+    };
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.type === 'presence') onPresence.forEach((fn) => fn(m));
+      else if (m.type === 'incoming-request') onRequest.forEach((fn) => fn(m));
+      else if (m.type === 'join-response') onResponse.forEach((fn) => fn(m));
+    };
+    ws.onclose = () => {
+      setTimeout(connect, retryDelay);
+      retryDelay = Math.min(retryDelay * 1.6, 20000);
+    };
+    ws.onerror = () => ws.close();
+  }
+  connect();
+  addEventListener('beforeunload', () => { ws.onclose = null; ws.close(); });
+
+  return {
+    reidentify: identify,
+    watch(ids) { lastWatch = ids; send({ type: 'watch-friends', ids }); },
+    requestJoin(targetId) { send({ type: 'join-request', targetId, fromName: currentName() }); },
+    respond(toId, accept, roomCode) { send({ type: 'join-response', toId, accept, roomCode }); },
+    onPresence: (fn) => onPresence.add(fn),
+    onRequest: (fn) => onRequest.add(fn),
+    onResponse: (fn) => onResponse.add(fn),
+  };
+})();
+
 /* ── Modo transmissor ──────────────────────────────────────── */
 
 const host = (function () {
@@ -359,6 +430,7 @@ const host = (function () {
   const startBtn = $('#host-start');
   const stopBtn = $('#host-stop');
   const micBtn = $('#host-mic');
+  const switchBtn = $('#host-switch');
   const fsBtn = $('#host-fs');
   const setup = $('#host-setup');
   const live = $('#host-live');
@@ -377,16 +449,23 @@ const host = (function () {
 
   serverEl.value = DEFAULT_WS;
   nameEl.value = prefs.read('name', '');
+  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
   audioEl.checked = prefs.read('audio', true);
+
+  function updateModeUI() {
+    document.querySelectorAll('[data-group="mode"] .seg')
+      .forEach((x) => x.classList.toggle('active', x.dataset.mode === mode));
+    switchBtn.title = (mode === 'screen' ? 'Trocar pra câmera' : 'Trocar pra tela') + ' (S)';
+    switchBtn.setAttribute('aria-label', switchBtn.title);
+  }
   document.querySelectorAll('[data-group="mode"] .seg').forEach((b) => {
-    b.classList.toggle('active', b.dataset.mode === mode);
     b.onclick = () => {
       mode = b.dataset.mode;
       prefs.write('mode', mode);
-      document.querySelectorAll('[data-group="mode"] .seg')
-        .forEach((x) => x.classList.toggle('active', x === b));
+      updateModeUI();
     };
   });
+  updateModeUI();
 
   function renderViewers() {
     listEl.innerHTML = '';
@@ -431,7 +510,11 @@ const host = (function () {
     setNet('wait', 'abrindo…');
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'host-create-room', name: nameEl.value.trim() || 'Host' }));
+      ws.send(JSON.stringify({
+        type: 'host-create-room',
+        name: nameEl.value.trim() || 'Host',
+        hostSocialId: MY_ID,
+      }));
       // Proxies (Railway incluso) matam WebSocket ocioso. Um ping leve segura.
       heartbeat = setInterval(() => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
@@ -548,8 +631,69 @@ const host = (function () {
     micBtn.querySelector('use').setAttribute('href', '#i-mic');
   }
 
+  // Troca a fonte (tela ↔ câmera) sem derrubar a sala: substitui só a
+  // track de vídeo em cada conexão já aberta (replaceTrack), então não
+  // precisa renegociar nem os espectadores percebem um corte.
+  async function switchSource() {
+    if (!stream || switchBtn.disabled) return;
+    const nextMode = mode === 'screen' ? 'camera' : 'screen';
+    let newStream;
+    switchBtn.disabled = true;
+    try {
+      newStream = nextMode === 'camera'
+        ? await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 } }, audio: false })
+        : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: false });
+    } catch (err) {
+      toast(mediaError(err), 'err', 5000);
+      switchBtn.disabled = false;
+      return;
+    }
+
+    const newTrack = newStream.getVideoTracks()[0];
+    const oldTrack = stream.getVideoTracks()[0];
+
+    for (const pc of peers.values()) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      await sender?.replaceTrack(newTrack);
+    }
+
+    oldTrack.stop();
+    stream.removeTrack(oldTrack);
+    stream.addTrack(newTrack);
+    video.srcObject = stream;
+    newTrack.addEventListener('ended', stop);
+
+    mode = nextMode;
+    prefs.write('mode', mode);
+    updateModeUI();
+    switchBtn.disabled = false;
+    toast('Fonte trocada ao vivo!', 'ok');
+  }
+
+  // Amigo pediu pra entrar — só aceita/recusa se ainda estiver no ar.
+  social.onRequest(({ fromId, fromName }) => {
+    if (!stream) { social.respond(fromId, false); return; }
+    const el = document.createElement('div');
+    el.className = 'toast toast-request';
+    const label = document.createElement('span');
+    label.textContent = `${fromName} quer entrar na sua sala.`;
+    const accept = document.createElement('button');
+    accept.className = 'btn btn-primary btn-sm';
+    accept.textContent = 'Aceitar';
+    const decline = document.createElement('button');
+    decline.className = 'btn btn-quiet btn-sm';
+    decline.textContent = 'Recusar';
+    el.append(label, accept, decline);
+    $('#toasts').append(el);
+    const remove = () => { el.classList.add('out'); el.addEventListener('animationend', () => el.remove(), { once: true }); };
+    const timer = setTimeout(() => { social.respond(fromId, false); remove(); }, 20000);
+    accept.onclick = () => { clearTimeout(timer); social.respond(fromId, true, roomCode); remove(); toast(`${fromName} foi liberado pra entrar!`, 'ok'); };
+    decline.onclick = () => { clearTimeout(timer); social.respond(fromId, false); remove(); };
+  });
+
   startBtn.onclick = start;
   stopBtn.onclick = stop;
+  switchBtn.onclick = switchSource;
   fsBtn.onclick = () => fullscreen(video);
 
   micBtn.onclick = () => {
@@ -578,6 +722,7 @@ const host = (function () {
     code: () => roomCode,
     fs: () => fullscreen(video),
     mic: () => micBtn.onclick(),
+    switchSource: () => switchSource(),
   };
 })();
 
@@ -595,9 +740,11 @@ const viewer = (function () {
   const tuning = $('#tuning');
 
   let ws = null, pc = null, heartbeat = null, joined = false;
+  const wrapEl = $('.console-wrap');
 
   serverEl.value = DEFAULT_WS;
   nameEl.value = prefs.read('name', '');
+  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
 
   codeEl.addEventListener('input', () => {
     codeEl.value = codeEl.value.toUpperCase().replace(/[^0-9A-F]/g, '');
@@ -647,6 +794,7 @@ const viewer = (function () {
           live.hidden = false;
           video.hidden = true;
           tuning.hidden = false;
+          wrapEl.classList.add('wide');
           $('#room-tag').textContent = 'sala ' + code;
           chat.attach(ws);
           chat.push('', 'Você entrou na sala.', true);
@@ -700,9 +848,18 @@ const viewer = (function () {
     video.srcObject = null;
     setup.hidden = false;
     live.hidden = true;
+    wrapEl.classList.remove('wide');
     $('#room-tag').textContent = 'sem sala';
     setNet('idle', 'offline');
     chat.detach();
+  }
+
+  // Chamado quando um amigo aceita seu pedido de entrada: preenche o
+  // código que só ele revelou e entra direto, sem o usuário digitar nada.
+  function requestedJoin(code) {
+    tabs.go('viewer');
+    codeEl.value = code;
+    join();
   }
 
   joinBtn.onclick = join;
@@ -725,7 +882,123 @@ const viewer = (function () {
     setTimeout(() => nameEl.value ? joinBtn.focus() : nameEl.focus(), 300);
   }
 
-  return { isLive: () => joined, fs: () => fullscreen(video) };
+  return { isLive: () => joined, fs: () => fullscreen(video), requestedJoin };
+})();
+
+/* Resposta do amigo a um "pedir pra entrar": aceito entra direto,
+   recusado ou offline avisa por quê. */
+social.onResponse(({ accept, roomCode, reason }) => {
+  if (accept) {
+    toast('Pedido aceito! Entrando...', 'ok');
+    viewer.requestedJoin(roomCode);
+  } else if (reason === 'offline') {
+    toast('Esse amigo não está transmitindo agora.', 'err');
+  } else {
+    toast('Seu pedido foi recusado.', 'err');
+  }
+});
+
+/* ── Amigos ────────────────────────────────────────────────── */
+
+const friends = (function () {
+  const myIdEl = $('#my-id');
+  const myIdCopyBtn = $('#my-id-copy');
+  const nameEl = $('#friends-name');
+  const addIdEl = $('#friend-add-id');
+  const addNameEl = $('#friend-add-name');
+  const addBtn = $('#friend-add-btn');
+  const listEl = $('#friend-list');
+  const countEl = $('#friend-n');
+
+  myIdEl.value = MY_ID;
+  myIdCopyBtn.onclick = () => copy(MY_ID, 'Seu código foi copiado!');
+  myIdEl.onclick = () => myIdEl.select();
+
+  nameEl.value = prefs.read('name', '');
+  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
+
+  let list = prefs.read('friends', []); // [{ id, label }]
+  const status = new Map(); // id → { status, name }
+
+  function persist() { prefs.write('friends', list); }
+  function resubscribe() { social.watch(list.map((f) => f.id)); }
+
+  function render() {
+    listEl.innerHTML = '';
+    countEl.textContent = String(list.length);
+    if (!list.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'Nenhum amigo ainda. Compartilhe seu código!';
+      listEl.append(li);
+      return;
+    }
+    for (const f of list) {
+      const st = status.get(f.id) || { status: 'offline', name: null };
+      const li = document.createElement('li');
+      li.className = 'friend-row';
+
+      const dot = document.createElement('span');
+      dot.className = 'friend-dot';
+      dot.dataset.status = st.status;
+
+      const name = document.createElement('span');
+      name.className = 'friend-name';
+      name.textContent = st.name || f.label;
+      name.title = st.status === 'live' ? 'Ao vivo agora' : st.status === 'idle' ? 'Online' : 'Offline';
+
+      li.append(dot, name);
+
+      if (st.status === 'live') {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = 'Pedir pra entrar';
+        btn.onclick = () => {
+          social.requestJoin(f.id);
+          btn.disabled = true;
+          btn.textContent = 'Pedido enviado…';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Pedir pra entrar'; }, 20000);
+        };
+        li.append(btn);
+      }
+
+      const rm = document.createElement('button');
+      rm.className = 'iconbtn friend-rm';
+      rm.setAttribute('aria-label', 'Remover amigo');
+      rm.innerHTML = '<svg class="ic"><use href="#i-close"/></svg>';
+      rm.onclick = () => { list = list.filter((x) => x.id !== f.id); persist(); resubscribe(); render(); };
+      li.append(rm);
+
+      listEl.append(li);
+    }
+  }
+
+  addIdEl.addEventListener('input', () => {
+    addIdEl.value = addIdEl.value.toUpperCase().replace(/[^0-9A-F]/g, '');
+  });
+
+  addBtn.onclick = () => {
+    const id = addIdEl.value.trim().toUpperCase();
+    const label = addNameEl.value.trim() || 'Amigo';
+    if (!/^[0-9A-F]{8}$/.test(id)) { toast('Código inválido — são 8 caracteres.', 'err'); addIdEl.focus(); return; }
+    if (id === MY_ID) { toast('Esse código é o seu!', 'err'); return; }
+    if (list.some((f) => f.id === id)) { toast('Esse amigo já está na lista.', 'err'); return; }
+    list.push({ id, label });
+    persist();
+    resubscribe();
+    render();
+    addIdEl.value = '';
+    addNameEl.value = '';
+    toast('Amigo adicionado!', 'ok');
+  };
+
+  social.onPresence(({ id, name, status: st }) => {
+    status.set(id, { status: st, name });
+    render();
+  });
+
+  render();
+  resubscribe();
 })();
 
 /* ── Atalhos do app instalado (?aba=host|viewer) ───────────── */
@@ -734,7 +1007,7 @@ const viewer = (function () {
   const p = new URLSearchParams(location.search);
   if (p.get('sala')) return; // convite manda mais que atalho
   const aba = p.get('aba');
-  if (aba === 'host' || aba === 'viewer') tabs.go(aba);
+  if (aba === 'host' || aba === 'viewer' || aba === 'friends') tabs.go(aba);
 })();
 
 /* ── Atalhos de teclado ────────────────────────────────────── */
@@ -751,6 +1024,9 @@ addEventListener('keydown', (e) => {
       break;
     case 'm':
       if (host.isLive()) host.mic();
+      break;
+    case 's':
+      if (host.isLive()) host.switchSource();
       break;
     case 'p':
       if (viewer.isLive()) $('#viewer-pip').click();
