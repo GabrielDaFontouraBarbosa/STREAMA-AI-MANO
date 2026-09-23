@@ -1,0 +1,22 @@
+# O Dockerfile roda `npm install` dentro da imagem e só DEPOIS copia o
+# código. Sem esta lista, o `COPY server ./server` jogaria o node_modules
+# da sua máquina (Windows) por cima do que foi instalado no Alpine.
+node_modules
+**/node_modules
+
+# Nada disso precisa entrar na imagem — e quanto menor o contexto, mais
+# rápido o build sobe pro Railway.
+.git
+.gitignore
+.claude
+.env
+.env.local
+.env.example
+*.log
+.DS_Store
+dist
+build
+
+# Documentação
+README.md
+RAILWAY_DEPLOY.md
