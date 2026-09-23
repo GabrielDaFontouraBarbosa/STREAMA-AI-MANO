@@ -8,7 +8,7 @@
  * Suba o CACHE ao mudar a lista de arquivos do shell.
  */
 
-const CACHE = 'sam-v2';
+const CACHE = 'blink-v1';
 const SHELL = [
   './',
   './index.html',
@@ -39,7 +39,10 @@ self.addEventListener('fetch', (e) => {
 
   // Só GET de mesma origem. POST, WebSocket e CDNs passam direto.
   if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // API, auth e links de redirect nunca vão pro cache.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/s/') || url.pathname.startsWith('/@')) return;
 
   e.respondWith(
     fetch(request)
@@ -57,4 +60,31 @@ self.addEventListener('fetch', (e) => {
         return new Response('Offline', { status: 503, statusText: 'Offline' });
       })
   );
+});
+
+/* ── Web Push: "fulano entrou ao vivo" ─────────────────────── */
+
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { title: 'Blink', body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(data.title || 'Blink', {
+    body: data.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: data.tag,
+    renotify: !!data.tag,
+    data: { url: data.url || '/' },
+  }));
+});
+
+// Clicar na notificação: foca uma aba do Blink se já tiver, senão abre.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || '/', self.location.origin).href;
+  e.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const tab = tabs.find((c) => new URL(c.url).origin === self.location.origin);
+    if (tab) { await tab.focus(); return tab.navigate(target); }
+    return self.clients.openWindow(target);
+  })());
 });

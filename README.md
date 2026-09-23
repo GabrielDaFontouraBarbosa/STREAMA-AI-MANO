@@ -1,75 +1,100 @@
-# Streama aí, Mano!
+# Blink
 
-Página web (sem instalar nada) que transmite sua tela pra vários amigos ao
-mesmo tempo via WebRTC. Você e seus amigos abrem a mesma URL — uma aba
-"Transmitir" e outra "Assistir".
+Sua tela (ou câmera) ao vivo pros amigos, direto do navegador. O vídeo vai
+ponto a ponto via WebRTC — o servidor só apresenta um navegador ao outro.
+
+## Stack
+
+| Camada | O que usa |
+|---|---|
+| Servidor | Node 22 + Express 5, um processo só (HTTP + WebSocket na mesma porta) |
+| Banco | Postgres (Railway) via **Drizzle ORM** — migrations em `server/drizzle/` |
+| Contas | **Better Auth** — email/senha + login por usuário, cookie httpOnly rolante (30 dias) |
+| TURN | **Cloudflare Realtime** — credencial temporária gerada em `/api/ice` |
+| Avisos | WebSocket (app aberto) + **Web Push/VAPID** (app fechado) |
+| Front | HTML/CSS/JS puro em `public/` (PWA) |
+| Mídia | Mesh P2P — bom pra até ~5 espectadores por sala |
 
 ## Estrutura
 
-- `server/` — um único processo Node.js que serve a página (`public/`) E faz
-  a sinalização por WebSocket na mesma porta. Só troca mensagens de handshake
-  do WebRTC (offer/answer/ICE); o vídeo nunca passa por ele.
-- `public/` — a página com as abas "Transmitir" e "Assistir". Usa
-  `getDisplayMedia()`, a API nativa do navegador pra capturar tela — não
-  precisa de Electron nem de instalar nada.
-- `host-app/` e `viewer/` — versão antiga (Electron + arquivo HTML solto).
-  Ficou aqui só de histórico; não é mais necessário rodar.
+```
+server/
+  index.js            boot: migrations → HTTP + WS
+  drizzle.config.js   config do drizzle-kit
+  drizzle/            migrations SQL versionadas (aplicadas no boot)
+  src/
+    config.js         variáveis de ambiente
+    db/schema.js      tabelas (auth + friendships, live_streams, push_subscriptions)
+    db/index.js       pool pg + instância Drizzle + runMigrations()
+    auth.js           Better Auth (plugin username)
+    app.js            rotas HTTP (/api/*, /@user, /s/CODE, estáticos)
+    signaling.js      WebSocket: salas WebRTC, presença, pedidos de entrada
+    hub.js            quem está online / ao vivo (memória + live_streams)
+    friends.js        amizades no banco
+    turn.js           Cloudflare TURN
+    push.js           Web Push
+public/               a página (index.html, app.js, styles.css, sw.js)
+```
 
-## Como rodar (teste local, todos na mesma rede)
+## Rodar local
+
+Precisa de Node 22+ e um Postgres.
+
+```bash
+cp .env.example .env          # ajuste DATABASE_URL
+cd server
+npm install
+npm run dev                   # aplica migrations e sobe em http://localhost:8080
+```
+
+Mudou o schema (`server/src/db/schema.js`)? Gere a migration e faça commit dela:
 
 ```bash
 cd server
-npm install
-npm start
+npm run db:generate           # cria server/drizzle/XXXX_*.sql
+npm run db:studio             # (opcional) navegar no banco
 ```
 
-Abra `http://localhost:8080` no navegador. Na aba "Transmitir", clique em
-"Selecionar tela e transmitir" — o próprio navegador vai perguntar qual
-tela/janela/aba compartilhar. Vai aparecer um código de sala (ex: `F4K9QZ`).
+## Deploy no Railway
 
-Seus amigos abrem a mesma URL (`http://<seu-ip-na-rede>:8080` se estiverem em
-outro PC na mesma Wi-Fi), vão na aba "Assistir", digitam o código e clicam em
-"Entrar".
+1. No projeto, **+ New → Database → PostgreSQL**.
+2. No serviço do app, em **Variables**:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `BETTER_AUTH_SECRET` = saída de `openssl rand -base64 32`
+   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (gere com `cd server && npm run vapid:keys`)
+   - `CLOUDFLARE_TURN_KEY_ID`, `CLOUDFLARE_TURN_API_TOKEN` (Cloudflare → Realtime → TURN Server)
+3. Deploy. As migrations rodam sozinhas no boot. Confira em `/api/health`
+   (`{"ok":true,"turn":true,"push":true}`).
 
-## Deploy no Railway (funcionando pela internet)
+Sem TURN o app funciona, mas quem estiver atrás de NAT restrito (rede de
+empresa, alguns 4G) fica em "Sintonizando…" pra sempre.
 
-Pra sua colega transmitir de qualquer lugar (não só na mesma rede), hospeda o
-servidor no Railway (free tier):
+## API
 
-### Passo a passo:
+| Método | Rota | O que faz |
+|---|---|---|
+| * | `/api/auth/*` | Better Auth (`sign-up/email`, `sign-in/email`, `sign-in/username`, `sign-out`, …) |
+| GET | `/api/me` | usuário logado (401 se não) |
+| GET | `/api/ice` | ICE servers (TURN só pra logado) |
+| GET | `/api/users/:username` | perfil + amizade + status (se amigo) |
+| GET | `/api/friends` | amigos (com status), pedidos recebidos e enviados |
+| POST | `/api/friends/request` | `{ username }` — pede amizade (ou aceita, se o outro já tinha pedido) |
+| POST | `/api/friends/accept` | `{ requestId }` |
+| POST | `/api/friends/decline` | `{ requestId }` — recusa ou cancela |
+| DELETE | `/api/friends/:userId` | desfaz amizade |
+| GET | `/api/push/key` | chave pública VAPID |
+| POST | `/api/push/subscribe` / `unsubscribe` | inscrição Web Push |
+| GET | `/s/:code` | link direto da sala → abre Assistir já preenchido |
+| GET | `/@:username` | link fixo da pessoa → se amigo e ao vivo, pede pra entrar |
 
-1. Acessa [railway.app](https://railway.app) e clica "Login with GitHub"
-2. Clica "New Project" → "Deploy from GitHub repo"
-   - Se você não tiver um repo GitHub, clica "Deploy from GitHub repo" mesmo assim
-   - Ou cria um repo rápido com:
-     ```bash
-     git init
-     git add .
-     git commit -m "Initial commit"
-     ```
-     E depois conecta no GitHub
-3. Seleciona este repositório
-4. Railway detecta que é Node.js — confirma e ativa
-5. Vai gerar um domínio tipo `https://seu-app-random.railway.app`
+## Privacidade das salas
 
-### Depois que tá rodando no Railway:
+- O link `/s/CODE` entra direto (quem tem o link, assiste — inclusive sem conta).
+- O link `/@usuario` nunca revela o código: só amigos aceitos conseguem pedir
+  pra entrar, e o host aceita ou recusa na hora.
 
-Na página do app, a URL muda de `ws://localhost:8080` pra `wss://seu-app-random.railway.app`.
-No navegador, você usa: `https://seu-app-random.railway.app`
+## Limites
 
-**Compartilha essa URL** (`https://...`, não `ws://...`) com a galera — todo mundo
-que clicar lá consegue transmitir e assistir de qualquer lugar do mundo.
-
-**Nota:** O free tier do Railway dorme o app depois de inatividade, mas acorda
-na hora que alguém acessa. Funciona tranquilo pra usar esporadicamente.
-
-## Limitações desse esqueleto
-
-- Sem áudio (só vídeo da tela). Pra incluir áudio, dá pra pedir
-  `getDisplayMedia({ video: true, audio: true })` — no Chrome/Edge no Windows,
-  ao compartilhar a tela inteira aparece a opção "Compartilhar áudio do
-  sistema" no seletor nativo.
-- Sem autenticação — qualquer um com o código entra na sala. Fácil de
-  adicionar uma senha simples se quiser.
-- Testado conceitualmente, não rodado de ponta a ponta aqui — revise antes de
-  usar em produção.
+- Mesh: o upload do host multiplica por espectador. Passou de ~5, pense em SFU (LiveKit).
+- Push no iPhone só com o Blink instalado na tela inicial (PWA).
+- O free tier do Railway pode dormir; a primeira conexão demora uns segundos.
