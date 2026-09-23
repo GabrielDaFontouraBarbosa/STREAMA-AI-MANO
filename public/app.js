@@ -1,11 +1,29 @@
 /* ═══════════════════════════════════════════════════════════
-   Streama aí, Mano! — cliente
+   Blink — cliente
    Sem dependências: WebRTC + WebSocket + Canvas puro.
    Organizado em módulos para poder ser reaproveitado numa
    extensão de navegador depois.
    ═══════════════════════════════════════════════════════════ */
 
 const $ = (s) => document.querySelector(s);
+
+/* Mensagem quebrada não deve derrubar o handler inteiro: sem isso, um
+   frame corrompido interrompe o onmessage e a sala trava sem nenhum
+   sinal na tela. */
+function safeParse(raw) {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+/* Fecha um socket que estamos descartando sem deixar os handlers dele
+   rodarem depois. O evento `close` chega assíncrono: se nesse meio-tempo
+   uma sessão nova já abriu, o handler antigo mexeria no estado dela
+   (matando o heartbeat novo, ou chamando leave() na sala nova). */
+function closeQuietly(ws) {
+  if (!ws) return;
+  ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+  try { ws.close(); } catch { /* já estava fechando */ }
+}
+
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
@@ -15,13 +33,35 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ── Preferências ──────────────────────────────────────────── */
 
+const NS = 'blink:';
+const NS_LEGACY = 'sam:'; // prefixo da marca anterior
+
+/* Copia as preferências do prefixo antigo pro novo. Trocar o prefixo sem
+   migrar apagaria o id pessoal de quem já usava — e id novo quer dizer que
+   todos os amigos que já te adicionaram nunca mais te encontram. As chaves
+   antigas ficam onde estão: não custam nada e servem de rede de segurança. */
+(function migratePrefs() {
+  try {
+    if (localStorage.getItem(NS + 'myid') !== null) return; // já migrado
+    const olds = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(NS_LEGACY)) olds.push(k);
+    }
+    // Só depois de coletar: escrever durante o laço remexe os índices.
+    for (const k of olds) {
+      localStorage.setItem(NS + k.slice(NS_LEGACY.length), localStorage.getItem(k));
+    }
+  } catch { /* modo privado */ }
+})();
+
 const prefs = {
   read(k, fallback) {
-    try { const v = localStorage.getItem('sam:' + k); return v === null ? fallback : JSON.parse(v); }
+    try { const v = localStorage.getItem(NS + k); return v === null ? fallback : JSON.parse(v); }
     catch { return fallback; }
   },
   write(k, v) {
-    try { localStorage.setItem('sam:' + k, JSON.stringify(v)); } catch { /* modo privado */ }
+    try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch { /* modo privado */ }
   },
 };
 
@@ -40,6 +80,23 @@ const MY_ID = (function () {
 
 function currentName() {
   return prefs.read('name', '').trim() || 'Anônimo';
+}
+
+/* Os três campos de "Seu nome" (transmitir, assistir, amigos) mostram o
+   mesmo dado. Cada um lia a preferência só no carregamento, então editar
+   numa aba não aparecia nas outras — e o último blur sobrescrevia em
+   silêncio o que você tinha acabado de digitar na aba anterior. */
+const nameFields = new Set();
+function registerNameField(el) {
+  el.value = prefs.read('name', '');
+  nameFields.add(el);
+  el.addEventListener('input', () => {
+    for (const other of nameFields) if (other !== el) other.value = el.value;
+  });
+  el.addEventListener('blur', () => {
+    prefs.write('name', el.value.trim());
+    social.reidentify();
+  });
 }
 
 /* ── Avisos ────────────────────────────────────────────────── */
@@ -140,12 +197,25 @@ function toast(text, kind = 'info', ms = 3400) {
 
   let last = 0;
   let running = true;
+  let scheduled = false;
+
+  // O `scheduled` garante um único loop vivo. Sem ele, ao voltar pra aba o
+  // visibilitychange agendava um frame novo enquanto o frame que estava
+  // pendente desde antes também retomava — dois loops. A cada ida e volta
+  // sobrava mais um, e o custo de CPU ia subindo sem motivo aparente.
+  function schedule() {
+    if (scheduled || !running) return;
+    scheduled = true;
+    requestAnimationFrame(loop);
+  }
+
   document.addEventListener('visibilitychange', () => {
     running = !document.hidden;
-    if (running) requestAnimationFrame(loop);
+    schedule();
   });
 
   function loop(now) {
+    scheduled = false;
     if (!running) return;
     // 15fps: grão de filme não precisa de 60.
     if (now - last > 66) {
@@ -160,9 +230,9 @@ function toast(text, kind = 'info', ms = 3400) {
       ctx.fillStyle = ctx.createPattern(tile, 'repeat');
       ctx.fillRect(0, 0, cv.width, cv.height);
     }
-    requestAnimationFrame(loop);
+    schedule();
   }
-  requestAnimationFrame(loop);
+  schedule();
 })();
 
 /* ── Onda do topo ──────────────────────────────────────────── */
@@ -183,9 +253,16 @@ function toast(text, kind = 'info', ms = 3400) {
   resize();
   addEventListener('resize', resize, { passive: true });
 
+  let scheduled = false;
+  function schedule() {
+    if (scheduled || !running) return;
+    scheduled = true;
+    requestAnimationFrame(loop);
+  }
+
   document.addEventListener('visibilitychange', () => {
     running = !document.hidden;
-    if (running) requestAnimationFrame(loop);
+    schedule();
   });
 
   // Três harmônicas sobrepostas: parece sinal, não parece decoração.
@@ -196,6 +273,7 @@ function toast(text, kind = 'info', ms = 3400) {
   ];
 
   function loop(now) {
+    scheduled = false;
     if (!running) return;
     t = now;
     ctx.clearRect(0, 0, w, h);
@@ -217,9 +295,9 @@ function toast(text, kind = 'info', ms = 3400) {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    requestAnimationFrame(loop);
+    schedule();
   }
-  requestAnimationFrame(loop);
+  schedule();
 })();
 
 /* ── Revelação no scroll ───────────────────────────────────── */
@@ -253,6 +331,10 @@ const tabs = (function () {
       const on = b.dataset.tab === name;
       b.classList.toggle('active', on);
       b.setAttribute('aria-selected', String(on));
+      // Roving tabindex: num tablist, Tab entra e sai do grupo inteiro e
+      // são as setas que andam entre as abas. Sem isso o teclado para em
+      // cada uma das três antes de chegar no formulário.
+      b.tabIndex = on ? 0 : -1;
     });
     document.querySelectorAll('.pane').forEach((p) => {
       p.classList.toggle('active', p.id === 'pane-' + name);
@@ -260,7 +342,20 @@ const tabs = (function () {
     moveInk();
   }
 
-  btns.forEach((b) => (b.onclick = () => go(b.dataset.tab)));
+  btns.forEach((b, i) => {
+    b.onclick = () => go(b.dataset.tab);
+    b.onkeydown = (e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      let next = null;
+      if (step) next = btns[(i + step + btns.length) % btns.length];
+      else if (e.key === 'Home') next = btns[0];
+      else if (e.key === 'End') next = btns[btns.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      go(next.dataset.tab);
+      next.focus();
+    };
+  });
   addEventListener('resize', moveInk, { passive: true });
   document.fonts?.ready.then(moveInk);
   requestAnimationFrame(moveInk);
@@ -396,7 +491,8 @@ const social = (function () {
       if (lastWatch.length) send({ type: 'watch-friends', ids: lastWatch });
     };
     ws.onmessage = (ev) => {
-      const m = JSON.parse(ev.data);
+      const m = safeParse(ev.data);
+      if (!m) return;
       if (m.type === 'presence') onPresence.forEach((fn) => fn(m));
       else if (m.type === 'incoming-request') onRequest.forEach((fn) => fn(m));
       else if (m.type === 'join-response') onResponse.forEach((fn) => fn(m));
@@ -448,8 +544,7 @@ const host = (function () {
   const names = new Map();   // viewerId → nome
 
   serverEl.value = DEFAULT_WS;
-  nameEl.value = prefs.read('name', '');
-  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
+  registerNameField(nameEl);
   audioEl.checked = prefs.read('audio', true);
 
   function updateModeUI() {
@@ -490,6 +585,10 @@ const host = (function () {
 
   async function offerTo(viewerId) {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    // Candidatos que chegarem antes do setRemoteDescription ficam aqui.
+    // addIceCandidate rejeita enquanto não existe descrição remota, e como
+    // o onmessage é async as duas mensagens podem ser tratadas em paralelo.
+    pc.pendingIce = [];
     peers.set(viewerId, pc);
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     pc.onicecandidate = (e) => {
@@ -506,7 +605,16 @@ const host = (function () {
   }
 
   function connect() {
-    ws = new WebSocket(serverEl.value);
+    // URL inválida (campo apagado, ws:// faltando) faz o construtor lançar.
+    // Sem isso a captura já tinha começado e a tela ficava "ao vivo" sem
+    // nenhuma sala do outro lado.
+    try {
+      ws = new WebSocket(serverEl.value);
+    } catch {
+      toast('Endereço do servidor inválido.', 'err', 5000);
+      stop();
+      return;
+    }
     setNet('wait', 'abrindo…');
 
     ws.onopen = () => {
@@ -522,7 +630,8 @@ const host = (function () {
     };
 
     ws.onmessage = async (ev) => {
-      const m = JSON.parse(ev.data);
+      const m = safeParse(ev.data);
+      if (!m) return;
       switch (m.type) {
         case 'room-created':
           roomCode = m.roomCode;
@@ -542,13 +651,19 @@ const host = (function () {
 
         case 'answer': {
           const pc = peers.get(m.viewerId);
-          if (pc) await pc.setRemoteDescription(m.sdp);
+          if (!pc) break;
+          await pc.setRemoteDescription(m.sdp);
+          // Agora que existe descrição remota, drena o que ficou na fila.
+          const queued = pc.pendingIce.splice(0);
+          for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
           break;
         }
 
         case 'ice-candidate': {
           const pc = peers.get(m.viewerId);
-          if (pc && m.candidate) await pc.addIceCandidate(m.candidate).catch(() => {});
+          if (!pc || !m.candidate) break;
+          if (pc.remoteDescription) await pc.addIceCandidate(m.candidate).catch(() => {});
+          else pc.pendingIce.push(m.candidate);
           break;
         }
 
@@ -617,8 +732,8 @@ const host = (function () {
     stream?.getTracks().forEach((t) => t.stop());
     stream = null;
     video.srcObject = null;
-    clearInterval(heartbeat);
-    ws?.close();
+    clearInterval(heartbeat); heartbeat = null;
+    closeQuietly(ws);
     ws = null;
     roomCode = '';
     setup.hidden = false;
@@ -711,7 +826,7 @@ const host = (function () {
     const text = `Bora assistir: ${url}`;
     // Compartilhamento nativo no celular; área de transferência no resto.
     if (navigator.share) {
-      try { await navigator.share({ title: 'Streama aí, Mano!', text: 'Entra na minha sala', url }); return; }
+      try { await navigator.share({ title: 'Blink', text: 'Entra na minha sala', url }); return; }
       catch { /* usuário cancelou — cai pro clipboard */ }
     }
     copy(text, 'Convite copiado!');
@@ -740,11 +855,11 @@ const viewer = (function () {
   const tuning = $('#tuning');
 
   let ws = null, pc = null, heartbeat = null, joined = false;
+  let pendingIce = [];
   const wrapEl = $('.console-wrap');
 
   serverEl.value = DEFAULT_WS;
-  nameEl.value = prefs.read('name', '');
-  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
+  registerNameField(nameEl);
 
   codeEl.addEventListener('input', () => {
     codeEl.value = codeEl.value.toUpperCase().replace(/[^0-9A-F]/g, '');
@@ -752,6 +867,7 @@ const viewer = (function () {
   codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
 
   function setupPeer() {
+    pc?.close(); // se o host reofertar, não deixa a conexão antiga pendurada
     pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pc.ontrack = (e) => {
       video.srcObject = e.streams[0];
@@ -771,11 +887,23 @@ const viewer = (function () {
     const code = codeEl.value.trim().toUpperCase();
     if (code.length !== 6) { toast('O código tem 6 caracteres.', 'err'); codeEl.focus(); return; }
 
+    // Entrar por cima de uma sessão aberta deixava ws, pc e o interval do
+    // heartbeat pendurados pra sempre (o `join` por convite de amigo entra
+    // sem passar pelo botão, que é o que normalmente bloqueia isso).
+    if (ws || joined) leave();
+
     prefs.write('name', nameEl.value.trim());
     joinBtn.disabled = true;
     setNet('wait', 'conectando…');
 
-    ws = new WebSocket(serverEl.value);
+    try {
+      ws = new WebSocket(serverEl.value);
+    } catch {
+      toast('Endereço do servidor inválido.', 'err', 5000);
+      joinBtn.disabled = false;
+      setNet('idle', 'offline');
+      return;
+    }
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: 'viewer-join', roomCode: code, name: nameEl.value.trim() || 'Anônimo' }));
@@ -785,7 +913,8 @@ const viewer = (function () {
     };
 
     ws.onmessage = async (ev) => {
-      const m = JSON.parse(ev.data);
+      const m = safeParse(ev.data);
+      if (!m) return;
       switch (m.type) {
         case 'joined':
           joined = true;
@@ -800,18 +929,25 @@ const viewer = (function () {
           chat.push('', 'Você entrou na sala.', true);
           break;
 
-        case 'offer':
+        case 'offer': {
           setupPeer();
           await pc.setRemoteDescription(m.sdp);
-          {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
-          }
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
+          // O host já começou a trilhar candidatos enquanto isso: aplica os
+          // que chegaram antes da descrição remota existir.
+          const queued = pendingIce.splice(0);
+          for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
           break;
+        }
 
         case 'ice-candidate':
-          if (m.candidate) await pc?.addIceCandidate(m.candidate).catch(() => {});
+          if (!m.candidate) break;
+          // Perder candidato aqui não dá erro visível — só faz a conexão
+          // falhar ou demorar, porque sobra menos caminho pra tentar.
+          if (pc?.remoteDescription) await pc.addIceCandidate(m.candidate).catch(() => {});
+          else pendingIce.push(m.candidate);
           break;
 
         case 'chat':
@@ -843,9 +979,12 @@ const viewer = (function () {
   function leave() {
     joined = false;
     pc?.close(); pc = null;
-    clearInterval(heartbeat);
-    ws?.close(); ws = null;
+    pendingIce = [];
+    clearInterval(heartbeat); heartbeat = null;
+    closeQuietly(ws); ws = null;
     video.srcObject = null;
+    video.hidden = true;
+    tuning.hidden = true;
     setup.hidden = false;
     live.hidden = true;
     wrapEl.classList.remove('wide');
@@ -914,10 +1053,15 @@ const friends = (function () {
   myIdCopyBtn.onclick = () => copy(MY_ID, 'Seu código foi copiado!');
   myIdEl.onclick = () => myIdEl.select();
 
-  nameEl.value = prefs.read('name', '');
-  nameEl.addEventListener('blur', () => { prefs.write('name', nameEl.value.trim()); social.reidentify(); });
+  registerNameField(nameEl);
 
-  let list = prefs.read('friends', []); // [{ id, label }]
+  // O localStorage é editável pelo usuário e sobrevive a mudanças de
+  // formato entre versões. Se vier lixo, uma lista vazia é melhor do que
+  // um TypeError que mata o resto do script (o render, os atalhos, tudo).
+  const storedFriends = prefs.read('friends', []);
+  let list = (Array.isArray(storedFriends) ? storedFriends : [])
+    .filter((f) => f && typeof f.id === 'string' && /^[0-9A-F]{8}$/.test(f.id))
+    .map((f) => ({ id: f.id, label: String(f.label || 'Amigo').slice(0, 24) }));
   const status = new Map(); // id → { status, name }
 
   function persist() { prefs.write('friends', list); }

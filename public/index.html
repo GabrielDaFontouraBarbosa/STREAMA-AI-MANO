@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Streama aí, Mano! — sua tela ao vivo, direto do navegador</title>
-  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo com a galera via WebRTC. Peer-to-peer, sem cadastro, sem instalar nada." />
+  <title>Blink — sua tela ao vivo em um piscar de olhos</title>
+  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo via WebRTC. Peer-to-peer, sem cadastro, sem instalar nada." />
 
   <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
@@ -12,12 +12,19 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Streama aí" />
+  <meta name="apple-mobile-web-app-title" content="Blink" />
 
-  <meta property="og:title" content="Streama aí, Mano!" />
-  <meta property="og:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
+  <meta property="og:title" content="Blink" />
+  <meta property="og:description" content="Sua tela ao vivo, sem instalar nada. WebRTC direto do navegador." />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Blink" />
+  <meta property="og:image" content="icon-512.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Blink" />
+  <meta name="twitter:description" content="Sua tela ao vivo, sem instalar nada. WebRTC direto do navegador." />
+  <meta name="twitter:image" content="icon-512.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -57,7 +64,7 @@
 <header class="topbar">
   <a class="brand" href="#top">
     <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="brand-name">Streama aí<span class="brand-dim">, Mano!</span></span>
+    <span class="brand-name">Blink</span>
   </a>
   <div class="topbar-right">
     <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label">offline</span></span>
@@ -96,21 +103,21 @@
         <span id="room-tag" class="mono dim">sem sala</span>
       </div>
 
-      <div class="tabs" role="tablist">
-        <button class="tab active" role="tab" aria-selected="true" data-tab="host">
+      <div class="tabs" role="tablist" aria-label="Modo do console">
+        <button id="tab-host" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="pane-host" data-tab="host">
           <svg class="ic"><use href="#i-screen"/></svg>Transmitir
         </button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="viewer">
+        <button id="tab-viewer" class="tab" type="button" role="tab" aria-selected="false" aria-controls="pane-viewer" tabindex="-1" data-tab="viewer">
           <svg class="ic"><use href="#i-cam"/></svg>Assistir
         </button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="friends">
+        <button id="tab-friends" class="tab" type="button" role="tab" aria-selected="false" aria-controls="pane-friends" tabindex="-1" data-tab="friends">
           <svg class="ic"><use href="#i-users"/></svg>Amigos
         </button>
         <span class="tab-ink" aria-hidden="true"></span>
       </div>
 
       <!-- ── TRANSMITIR ────────────────────────────────── -->
-      <section id="pane-host" class="pane active" role="tabpanel">
+      <section id="pane-host" class="pane active" role="tabpanel" aria-labelledby="tab-host" tabindex="0">
 
         <div id="host-setup">
           <div class="field">
@@ -172,7 +179,7 @@
       </section>
 
       <!-- ── ASSISTIR ──────────────────────────────────── -->
-      <section id="pane-viewer" class="pane" role="tabpanel">
+      <section id="pane-viewer" class="pane" role="tabpanel" aria-labelledby="tab-viewer" tabindex="0">
 
         <div id="viewer-setup">
           <div class="field">
@@ -208,7 +215,7 @@
       </section>
 
       <!-- ── AMIGOS ────────────────────────────────────── -->
-      <section id="pane-friends" class="pane" role="tabpanel">
+      <section id="pane-friends" class="pane" role="tabpanel" aria-labelledby="tab-friends" tabindex="0">
 
         <div class="myid-box frame">
           <div class="myid-label"><svg class="ic"><use href="#i-key"/></svg>Seu código de amigo</div>
@@ -291,7 +298,7 @@
 
 <footer class="foot">
   <div class="bars sm" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  <p class="mono dim">Streama aí, Mano! — WebRTC + WebSocket, e mais nada.</p>
+  <p class="mono dim">Blink — compartilhe sua tela em um piscar de olhos.</p>
 </footer>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>

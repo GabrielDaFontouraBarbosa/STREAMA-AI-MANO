@@ -8,7 +8,7 @@
  * Suba o CACHE ao mudar a lista de arquivos do shell.
  */
 
-const CACHE = 'sam-v2';
+const CACHE = 'blink-v1';
 const SHELL = [
   './',
   './index.html',
@@ -44,9 +44,13 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(request)
       .then((res) => {
-        // Guarda uma cópia fresca pro caso de cair a rede depois.
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+        // Só guarda resposta boa. Sem esse teste, um 404 ou um 500 passageiro
+        // virava a versão "offline" do arquivo e o usuário continuava vendo
+        // o erro mesmo depois da rede voltar.
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(async () => {

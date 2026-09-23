@@ -1,4 +1,4 @@
-# Streama aí, Mano!
+# Blink
 
 Página web (sem instalar nada) que transmite sua tela pra vários amigos ao
 mesmo tempo via WebRTC. Você e seus amigos abrem a mesma URL — uma aba
