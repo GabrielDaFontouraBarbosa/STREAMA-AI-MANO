@@ -38,8 +38,29 @@ const MIME_TYPES = {
 // usuário continua vendo a versão anterior depois de um deploy.
 const IMMUTABLE = new Set(['.png', '.svg', '.ico', '.woff2']);
 
+// Momento em que este processo subiu. Junto com o commit, é o que responde
+// "o deploy pegou ou não?" sem depender do painel do Railway.
+const BOOT_TIME = new Date().toISOString();
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
+
+  // Qual versão está realmente no ar. O Railway injeta RAILWAY_GIT_COMMIT_SHA
+  // no build; local não tem, então responde "local". Ficamos dias sem saber
+  // que o site rodava um commit de 12 dias atrás — isso torna a resposta
+  // instantânea e não dá pra confundir com cache: é JSON, sem service worker.
+  if (urlPath === '/version') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({
+      app: 'Blink',
+      commit: (process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0, 7),
+      bootedAt: BOOT_TIME,
+    }));
+    return;
+  }
 
   // decodeURIComponent estoura em URL malformada ("/%", "/%zz"). Sem esse
   // try/catch o throw sobe pro callback do createServer e derruba o processo

@@ -39,7 +39,12 @@ self.addEventListener('fetch', (e) => {
 
   // Só GET de mesma origem. POST, WebSocket e CDNs passam direto.
   if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // /version existe pra dizer a verdade sobre o que está no ar. Se passasse
+  // pelo cache, poderia responder a versão antiga — justamente o erro que
+  // ele serve pra detectar.
+  if (url.pathname === '/version') return;
 
   e.respondWith(
     fetch(request)
