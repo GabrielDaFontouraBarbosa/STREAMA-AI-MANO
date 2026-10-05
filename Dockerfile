@@ -1,21 +1,18 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
+ENV NODE_ENV=production
 
-# Copia package.json da raiz e do server
+# Dependências do servidor (sem as de dev — drizzle-kit só roda local)
 COPY package*.json ./
 COPY server/package*.json ./server/
+RUN cd server && npm ci --omit=dev
 
-# Instala dependências da raiz e do server
-RUN npm install
-RUN cd server && npm install
-
-# Copia o código
+# Código + migrations (server/drizzle) + página
 COPY public ./public
 COPY server ./server
 
-# Expõe a porta (Railway vai usar PORT env var)
 EXPOSE 8080
 
-# Roda o servidor
-CMD ["npm", "start"]
+# As migrations do Drizzle rodam sozinhas no boot (server/index.js)
+CMD ["node", "server/index.js"]

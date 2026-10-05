@@ -15,24 +15,24 @@ Platform-as-a-Service (PaaS) que hospeda aplicações Node.js, Python, etc. Tem 
 
 ### 2. Subir o código pro GitHub
 
-Abre o terminal na pasta `streama-ai-mano` e roda:
+Abre o terminal na pasta `blink` e roda:
 
 ```bash
-git remote add origin https://github.com/SEU-USUARIO/streama-ai-mano.git
+git remote add origin https://github.com/SEU-USUARIO/blink.git
 git branch -M main
 git push -u origin main
 ```
 
 (Substitui `SEU-USUARIO` pelo seu username no GitHub)
 
-Ou, se preferir, clica em "+ New" no GitHub e cria um novo repo chamado `streama-ai-mano`, aí copia os comandos que ele sugere.
+Ou, se preferir, clica em "+ New" no GitHub e cria um novo repo chamado `blink`, aí copia os comandos que ele sugere.
 
 ### 3. Fazer deploy no Railway
 
 - Volta em [railway.app](https://railway.app)
 - Clica **"New Project"**
 - Clica **"Deploy from GitHub repo"**
-- Seleciona `seu-usuario/streama-ai-mano`
+- Seleciona `seu-usuario/blink`
 - Railway detecta que é Node.js e faz o deploy automaticamente
 
 ### 4. Pegar a URL pública
