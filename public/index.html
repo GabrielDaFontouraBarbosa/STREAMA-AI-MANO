@@ -25,10 +25,11 @@
   <meta name="twitter:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
   <meta name="twitter:image" content="icon-512.png" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+  <!-- fontes servidas daqui mesmo: o CSS do Google Fonts levava 2s e travava a 1ª pintura -->
+  <link rel="preload" href="fonts/anybody-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
+  <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
 
@@ -41,6 +42,9 @@
   <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></symbol>
   <symbol id="i-micoff" viewBox="0 0 24 24"><path d="M2 2l20 20M18.89 13.23A7.12 7.12 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v3a3 3 0 0 0 5.12 2.12M12 19v3"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+  <symbol id="i-vol-low" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
+  <symbol id="i-vol-off" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
   <symbol id="i-pip" viewBox="0 0 24 24"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect x="12" y="13" width="10" height="7" rx="2"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><path d="M18.36 6.64A9 9 0 0 1 20.77 15M6.16 6.16a9 9 0 1 0 12.68 12.68M12 2v4M2 2l20 20"/></symbol>
   <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14M7.76 16.24a6 6 0 0 1 0-8.49M16.24 7.76a6 6 0 0 1 0 8.49M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
@@ -72,16 +76,11 @@
 
   <!-- ── discurso ──────────────────────────────────────── -->
   <section class="hero">
-    <p class="label-micro eyebrow">Ponto a ponto · o servidor não vê o vídeo</p>
-    <h1>Sua tela,<br><em>ao vivo<svg viewBox="0 0 200 8" preserveAspectRatio="none" aria-hidden="true"><path d="M0 5 Q 50 1 100 4 T 200 3"/></svg></em>,<br>pra geral.</h1>
-    <p class="lede">Abre uma sala, manda o código pros amigos. O vídeo sai do seu navegador direto pro deles — nenhum frame passa por um servidor no meio.</p>
-
-    <!-- três provas, em linha de texto e não em cards -->
-    <dl class="proofs">
-      <div><dt class="label-micro">Atraso</dt><dd class="mono">&lt; 1s</dd><dd>da sua tela até a deles</dd></div>
-      <div><dt class="label-micro">O servidor vê</dt><dd class="mono">0 bytes</dd><dd>só apresenta os dois lados</dd></div>
-      <div><dt class="label-micro">Pra entrar</dt><dd class="mono">6 letras</dd><dd>o código da sala, e pronto</dd></div>
-    </dl>
+    <h1 class="blink-title">
+      <span class="lid lid-top" aria-hidden="true"></span><span class="lid lid-bot" aria-hidden="true"></span>
+      Sua tela,<br>ao vivo,<br>pra geral.
+    </h1>
+    <p class="lede">Abre uma sala, manda o código pros amigos e pronto. O vídeo vai do seu navegador direto pro deles, sem servidor no meio, em menos de um segundo.</p>
   </section>
 
   <!-- ── painel de ação ────────────────────────────────── -->
@@ -97,7 +96,7 @@
 
       <!-- estado da conexão: só importa dentro da sala -->
       <div class="console-head">
-        <span id="room-tag" class="label-micro">sem sala</span>
+        <span id="room-tag" class="label-micro">Sem sala</span>
         <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label">offline</span></span>
       </div>
 
@@ -116,6 +115,15 @@
               <button class="seg active" data-mode="screen"><svg class="ic"><use href="#i-screen"/></svg>Tela</button>
               <button class="seg" data-mode="camera"><svg class="ic"><use href="#i-cam"/></svg>Câmera</button>
             </div>
+          </div>
+
+          <div class="field" id="host-quality-field">
+            <label>O que você vai mostrar</label>
+            <div class="segmented" data-group="quality">
+              <button class="seg active" data-quality="motion">Jogo ou vídeo</button>
+              <button class="seg" data-quality="detail">Texto ou código</button>
+            </div>
+            <p class="field-hint" id="host-quality-hint">Prioriza fluidez: até 60 quadros por segundo.</p>
           </div>
 
           <label class="check">
@@ -140,7 +148,7 @@
         <div id="host-live" hidden>
           <div class="stage-wrap stage-host">
             <video id="local-video" class="stage" autoplay playsinline muted></video>
-            <span class="stage-badge"><span class="live-tag"><span class="live-dot"></span>Ao vivo</span><span class="stage-note">isto é o que eles veem</span></span>
+            <span class="stage-badge"><span class="stage-note">Isto é o que eles veem</span></span>
           </div>
 
           <div class="ctrlbar">
@@ -200,15 +208,19 @@
           <div class="stage-wrap">
             <div id="tuning" class="tuning"><span></span><span></span><span></span><p>Sintonizando…</p></div>
             <video id="remote-video" class="stage" autoplay playsinline></video>
-            <span class="stage-badge"><span class="live-tag"><span class="live-dot"></span>Ao vivo</span></span>
           </div>
           <div class="ctrlbar">
             <button id="viewer-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
             <button id="viewer-pip" class="iconbtn" aria-label="Janela flutuante" title="Janela flutuante (P)"><svg class="ic"><use href="#i-pip"/></svg></button>
+            <div id="viewer-vol" class="vol">
+              <button id="viewer-mute" class="iconbtn iconbtn-flat" aria-label="Mutar" title="Mutar (M)"><svg class="ic"><use href="#i-vol"/></svg></button>
+              <input id="viewer-volume" class="vol-range" type="range" min="0" max="100" step="1" value="100" aria-label="Volume da transmissão" />
+              <output id="viewer-vol-val" class="vol-val mono" for="viewer-volume">100</output>
+            </div>
             <span class="ctrl-spacer"></span>
             <button id="viewer-leave" class="btn btn-outline">Sair da sala</button>
           </div>
-          <p class="shortcuts"><kbd>F</kbd> tela cheia <kbd>P</kbd> flutuante</p>
+          <p class="shortcuts"><kbd>F</kbd> tela cheia <kbd>P</kbd> flutuante <kbd>M</kbd> mudo</p>
         </div>
       </section>
 
@@ -279,8 +291,8 @@
 </main>
 
 <footer class="foot">
-  <span>Blink — sua tela ao vivo num piscar de olhos.</span>
-  <span class="mono">ponto a ponto · webrtc</span>
+  <span>Sua tela ao vivo num piscar de olhos.</span>
+  <span>O vídeo vai direto de um navegador pro outro.</span>
 </footer>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
@@ -288,7 +300,7 @@
 <dialog id="auth" class="auth" aria-labelledby="auth-title">
   <div class="auth-inner">
     <img class="auth-mark" src="mark-detail.svg" alt="" width="56" height="56" />
-    <h2 id="auth-title">Entra no <em>Blink</em></h2>
+    <h2 id="auth-title">Entra no Blink</h2>
     <p class="auth-sub">Sua conta fica lembrada neste navegador.</p>
 
     <div class="segmented auth-tabs" data-group="auth">

@@ -8,7 +8,7 @@
  * Suba o CACHE ao mudar a lista de arquivos do shell.
  */
 
-const CACHE = 'blink-v2';
+const CACHE = 'blink-v3';
 const SHELL = [
   './',
   './index.html',
@@ -18,6 +18,9 @@ const SHELL = [
   './mark.svg',
   './mark-detail.svg',
   './manifest.webmanifest',
+  './fonts/anybody-latin.woff2',
+  './fonts/instrument-sans-latin.woff2',
+  './fonts/jetbrains-mono-latin.woff2',
 ];
 
 self.addEventListener('install', (e) => {

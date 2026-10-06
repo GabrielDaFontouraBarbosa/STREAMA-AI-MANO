@@ -7,6 +7,13 @@
 
 const $ = (s) => document.querySelector(s);
 
+/* Título abre (a piscada) quando a fonte dele chega, ou em 1,2s no máximo. */
+(function fontsReady() {
+  const go = () => document.documentElement.classList.add('fonts-ready');
+  document.fonts?.load('850 100px Anybody').then(go, go);
+  setTimeout(go, 1200);
+})();
+
 /* Mensagem quebrada não deve derrubar o handler inteiro: sem isso, um
    frame corrompido interrompe o onmessage e a sala trava sem nenhum
    sinal na tela. */
@@ -319,7 +326,7 @@ const account = (function () {
   function open(m = 'login', why = '') {
     mode(m);
     if (why) $('#auth-title').textContent = why;
-    else $('#auth-title').innerHTML = 'Entra no <em>Blink</em>';
+    else $('#auth-title').textContent = 'Entra no Blink';
     if (!dlg.open) dlg.showModal();
   }
 
@@ -394,7 +401,9 @@ const account = (function () {
 await account.load();
 // Sem conta: pede login logo de cara — menos quando chegou por link de sala,
 // que dá pra assistir sem conta.
-if (!account.me && !new URLSearchParams(location.search).get('sala')) account.open();
+// Conta é opcional: o login só abre quando a ação precisa dele (transmitir,
+// abrir um perfil) ou pelos botões do topo. Abrir sozinho na chegada
+// escondia a página e espantava quem só veio assistir.
 if (account.me) loadIce(); // já deixa as credenciais TURN prontas
 
 /* ── Conexão social (presença de amigos) ───────────────────── */
@@ -496,9 +505,30 @@ const host = (function () {
   nameEl.value = account.me?.name ?? prefs.read('name', '');
   audioEl.checked = prefs.read('audio', true);
 
+  /* Qualidade. "Jogo ou vídeo" segura o FPS e deixa a resolução cair quando
+     a rede aperta; "Texto ou código" segura a nitidez e sacrifica FPS — um
+     slide borrado é pior que um slide a 15 quadros. Câmera é sempre movimento. */
+  const QUALITY = {
+    motion: { hint: 'motion', fps: 60, degrade: 'maintain-framerate', maxKbps: 6000,
+      label: 'Prioriza fluidez: até 60 quadros por segundo.' },
+    detail: { hint: 'detail', fps: 30, degrade: 'maintain-resolution', maxKbps: 4000,
+      label: 'Prioriza nitidez: letra pequena continua legível.' },
+    camera: { hint: 'motion', fps: 30, degrade: 'balanced', maxKbps: 2500 },
+  };
+  // Upload total que dá pra gastar (P2P: cada espectador é uma cópia do
+  // vídeo saindo da sua internet). Dividido entre eles, com piso e teto.
+  const UPLOAD_BUDGET_KBPS = 12000;
+  const MIN_KBPS = 500;
+  let quality = prefs.read('quality', 'motion');
+  const q = (m = mode) => (m === 'camera' ? QUALITY.camera : QUALITY[quality] || QUALITY.motion);
+
   function updateModeUI() {
     document.querySelectorAll('[data-group="mode"] .seg')
       .forEach((x) => x.classList.toggle('active', x.dataset.mode === mode));
+    document.querySelectorAll('[data-group="quality"] .seg')
+      .forEach((x) => x.classList.toggle('active', x.dataset.quality === quality));
+    $('#host-quality-field').hidden = mode === 'camera';
+    $('#host-quality-hint').textContent = QUALITY[quality].label;
     switchBtn.title = (mode === 'screen' ? 'Trocar pra câmera' : 'Trocar pra tela') + ' (S)';
     switchBtn.setAttribute('aria-label', switchBtn.title);
   }
@@ -509,7 +539,55 @@ const host = (function () {
       updateModeUI();
     };
   });
+  document.querySelectorAll('[data-group="quality"] .seg').forEach((b) => {
+    b.onclick = () => {
+      quality = b.dataset.quality;
+      prefs.write('quality', quality);
+      updateModeUI();
+    };
+  });
   updateModeUI();
+
+  // Pede a captura já no formato certo: 1080p no máximo (mais que isso só
+  // gasta upload), FPS da prioridade, e áudio de sistema sem filtro de voz
+  // (cancelamento de eco e supressão de ruído estragam música e jogo).
+  function capture(wantAudio, m = mode) {
+    const { fps } = q(m);
+    if (m === 'camera') {
+      return navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: fps } },
+        audio: wantAudio,
+      });
+    }
+    return navigator.mediaDevices.getDisplayMedia({
+      video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: fps, max: fps } },
+      audio: wantAudio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false,
+      systemAudio: 'include',
+      surfaceSwitching: 'include',   // Chrome: trocar de aba sem parar a transmissão
+      selfBrowserSurface: 'exclude', // não oferecer a própria aba do Blink (efeito espelho)
+    });
+  }
+
+  // contentHint diz pro codificador o que preservar quando a rede aperta.
+  function hintTrack(track, m = mode) {
+    if (track && 'contentHint' in track) track.contentHint = q(m).hint;
+  }
+
+  // Teto de bitrate por espectador + o que sacrificar primeiro. Sem isso o
+  // navegador usa ~2,5 Mbps fixos pra tela, pouco pra 1 amigo e demais pra 10.
+  async function tuneSender(pc) {
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+    if (!sender) return;
+    const { degrade, fps, maxKbps } = q();
+    const perViewer = Math.max(MIN_KBPS, Math.min(maxKbps, Math.floor(UPLOAD_BUDGET_KBPS / Math.max(1, peers.size))));
+    const params = sender.getParameters();
+    if (!params.encodings?.length) return; // ainda não negociou; tenta no 'connected'
+    params.encodings[0].maxBitrate = perViewer * 1000;
+    params.encodings[0].maxFramerate = fps;
+    params.degradationPreference = degrade;
+    await sender.setParameters(params).catch(() => {});
+  }
+  const retuneAll = () => { for (const pc of peers.values()) tuneSender(pc); };
 
   function renderViewers() {
     listEl.innerHTML = '';
@@ -537,12 +615,12 @@ const host = (function () {
     iceTimers.delete(viewerId);
     restarts.delete(viewerId);
     peers.get(viewerId)?.close();
-    peers.delete(viewerId);
+    if (peers.delete(viewerId)) retuneAll(); // sobrou upload pros outros
   }
 
   async function offerTo(viewerId) {
     dropPeer(viewerId); // oferta nova sempre começa de uma conexão limpa
-    const pc = new RTCPeerConnection({ iceServers: iceNow() });
+    const pc = new RTCPeerConnection({ iceServers: iceNow(), bundlePolicy: 'max-bundle' });
     // Candidatos que chegarem antes do setRemoteDescription ficam aqui:
     // addIceCandidate rejeita sem descrição remota, e o onmessage é async.
     pc.pendingIce = [];
@@ -555,13 +633,14 @@ const host = (function () {
       if (peers.get(viewerId) !== pc) return;
       const st = pc.connectionState;
       clearTimeout(iceTimers.get(viewerId));
-      if (st === 'connected') restarts.delete(viewerId);
+      if (st === 'connected') { restarts.delete(viewerId); tuneSender(pc); }
       else if (st === 'disconnected') iceTimers.set(viewerId, setTimeout(() => restartIce(viewerId), ICE_GRACE_MS));
       else if (st === 'failed') restartIce(viewerId);
     };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     sig({ type: 'offer', viewerId, sdp: pc.localDescription, fresh: true });
+    retuneAll(); // um espectador a mais: redivide o upload
   }
 
   // Troca a rota da mídia sem derrubar a conexão (nem o vídeo do outro lado).
@@ -627,7 +706,7 @@ const host = (function () {
           links = m.links || { room: `/s/${roomCode}`, profile: null };
           $('#copy-profile').hidden = !links.profile;
           scramble(codeEl, roomCode);
-          $('#room-tag').textContent = 'sala ' + roomCode;
+          $('#room-tag').textContent = 'Sala ' + roomCode;
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
@@ -721,12 +800,7 @@ const host = (function () {
     const wantAudio = audioEl.checked;
     startBtn.disabled = true;
     try {
-      stream = mode === 'camera'
-        ? await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 } }, audio: wantAudio })
-        : await navigator.mediaDevices.getDisplayMedia({
-            video: { frameRate: { ideal: 30 } },
-            audio: wantAudio,
-          });
+      stream = await capture(wantAudio);
     } catch (err) {
       toast(mediaError(err), 'err', 5000);
       startBtn.disabled = false;
@@ -737,6 +811,7 @@ const host = (function () {
     prefs.write('audio', wantAudio);
     await loadIce();
 
+    hintTrack(stream.getVideoTracks()[0]);
     // Quando o usuário clica "parar de compartilhar" na barra do navegador.
     stream.getVideoTracks()[0].addEventListener('ended', stop);
 
@@ -769,7 +844,7 @@ const host = (function () {
     live.hidden = true;
     document.body.classList.remove('in-room');
     codeEl.textContent = '------';
-    $('#room-tag').textContent = 'sem sala';
+    $('#room-tag').textContent = 'Sem sala';
     setNet('idle', 'offline');
     chat.detach();
     micBtn.setAttribute('aria-pressed', 'false');
@@ -785,9 +860,7 @@ const host = (function () {
     let newStream;
     switchBtn.disabled = true;
     try {
-      newStream = nextMode === 'camera'
-        ? await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 } }, audio: false })
-        : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: false });
+      newStream = await capture(false, nextMode);
     } catch (err) {
       toast(mediaError(err), 'err', 5000);
       switchBtn.disabled = false;
@@ -808,9 +881,11 @@ const host = (function () {
     video.srcObject = stream;
     newTrack.addEventListener('ended', stop);
 
+    hintTrack(newTrack, nextMode);
     mode = nextMode;
     prefs.write('mode', mode);
     updateModeUI();
+    retuneAll(); // câmera e tela têm tetos de bitrate diferentes
     switchBtn.disabled = false;
     toast('Fonte trocada ao vivo!', 'ok');
   }
@@ -892,13 +967,78 @@ const viewer = (function () {
   let pendingIce = []; // candidatos que chegaram antes da oferta ser aplicada
   const sig = (msg) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
 
-  // Som liberado só com gesto do usuário. Se o navegador barrar o autoplay,
-  // toca mudo (melhor que tela preta parecendo "caiu") e avisa.
+  /* Volume da transmissão. O slider é a única fonte da verdade: video.volume
+     e video.muted só mudam por aqui. O valor fica salvo pro próximo acesso. */
+  const volEl = $('#viewer-volume');
+  const muteBtn = $('#viewer-mute');
+  const volVal = $('#viewer-vol-val');
+  let lastVol = 70; // pra onde o desmutar volta
+
+  function setVolume(v, { save = true } = {}) {
+    v = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    volEl.value = v;
+    volEl.style.setProperty('--v', v + '%');
+    volVal.textContent = v;
+    video.volume = v / 100;
+    video.muted = v === 0;
+    const off = v === 0;
+    muteBtn.querySelector('use').setAttribute('href', off ? '#i-vol-off' : v < 45 ? '#i-vol-low' : '#i-vol');
+    muteBtn.setAttribute('aria-label', off ? 'Ativar som' : 'Mutar');
+    muteBtn.title = off ? 'Ativar som (M)' : 'Mutar (M)';
+    $('#viewer-vol').classList.remove('blocked');
+    if (v > 0) lastVol = v;
+    if (save) prefs.write('volume', v);
+    // Mexer no volume é gesto do usuário: libera o som se o navegador barrou.
+    if (v > 0 && video.paused && video.srcObject) video.play().catch(() => {});
+  }
+  const toggleMute = () => setVolume(video.muted ? lastVol : 0);
+
+  volEl.addEventListener('input', () => setVolume(volEl.value));
+  muteBtn.onclick = toggleMute;
+  setVolume(prefs.read('volume', 100), { save: false });
+
+  /* "Sintonizando…" com diagnóstico: diz o que está acontecendo em vez de
+     girar pra sempre. Some quando o primeiro quadro chega. */
+  const tuningMsg = tuning.querySelector('p');
+  let tuningTimers = [];
+  function setTuning(text) { tuningMsg.textContent = text; }
+  function clearTuning() { tuningTimers.forEach(clearTimeout); tuningTimers = []; }
+
+  function watchTuning(conn) {
+    clearTuning();
+    setTuning('Conectando direto no transmissor…');
+    tuningTimers.push(
+      setTimeout(() => { if (pc === conn && video.hidden) setTuning('Ainda conectando… testando outra rota.'); }, 6000),
+      setTimeout(() => {
+        if (pc !== conn || !video.hidden) return;
+        setTuning(iceCache?.turn
+          ? 'A conexão está difícil. Se não abrir, saia e entre de novo.'
+          : 'Sua rede (ou a de quem transmite) está bloqueando a conexão direta. Wi-Fi costuma resolver; 4G costuma bloquear.');
+        setNet('wait', 'sem rota');
+      }, 15000),
+    );
+  }
+
+  function revealVideo() {
+    clearTuning();
+    tuning.hidden = true;
+    video.hidden = false;
+    video.classList.remove('stage-in');
+    void video.offsetWidth; // reinicia a animação de entrada
+    video.classList.add('stage-in');
+    if (pc?.connectionState === 'connected') setNet('live', 'ao vivo');
+  }
+
+  // Som automático só depois de um gesto do usuário (clicar em "Entrar"
+  // normalmente basta). Se o navegador barrar mesmo assim, toca mudo em vez
+  // de tela preta, e o slider pulsa: arrastar já devolve o som.
   function play() {
     video.play().catch(() => {
-      video.muted = true;
+      const wanted = lastVol;
+      setVolume(0, { save: false });
+      lastVol = wanted;
+      $('#viewer-vol').classList.add('blocked');
       video.play().catch(() => {});
-      actionToast('O navegador bloqueou o som.', [{ label: 'Ativar som', run: () => { video.muted = false; video.play().catch(() => {}); } }], 15000);
     });
   }
 
@@ -906,13 +1046,17 @@ const viewer = (function () {
     pc?.close();
     clearTimeout(iceTimer);
     pendingIce = [];
-    const conn = new RTCPeerConnection({ iceServers: iceNow() });
+    const conn = new RTCPeerConnection({ iceServers: iceNow(), bundlePolicy: 'max-bundle' });
     pc = conn;
+    // ontrack dispara na NEGOCIAÇÃO, antes de existir conexão. Mostrar o
+    // <video> aqui era a tela preta: se a rota P2P falhasse, ficava um
+    // retângulo preto com "ao vivo" em cima. O vídeo só aparece no 1º quadro.
     conn.ontrack = (e) => {
-      if (video.srcObject !== e.streams[0]) { video.srcObject = e.streams[0]; play(); }
-      tuning.hidden = true;
-      video.hidden = false;
-      setNet('live', 'ao vivo');
+      if (video.srcObject === e.streams[0]) return;
+      video.srcObject = e.streams[0];
+      video.onloadeddata = revealVideo;
+      play();
+      watchTuning(conn);
     };
     conn.onicecandidate = (e) => {
       if (e.candidate) sig({ type: 'ice-candidate', candidate: e.candidate });
@@ -924,7 +1068,10 @@ const viewer = (function () {
       if (pc !== conn) return;
       clearTimeout(iceTimer);
       const st = conn.connectionState;
-      if (st === 'connected') { setNet('live', 'ao vivo'); return; }
+      if (st === 'connected') {
+        setNet(video.hidden ? 'wait' : 'live', video.hidden ? 'recebendo…' : 'ao vivo');
+        return;
+      }
       if (st === 'disconnected' || st === 'failed') {
         setNet('wait', 'instável…');
         iceTimer = setTimeout(() => sig({ type: 'restart-ice' }), st === 'failed' ? 0 : ICE_GRACE_MS);
@@ -937,8 +1084,9 @@ const viewer = (function () {
     live.hidden = false;
     video.hidden = true;
     tuning.hidden = false;
+    setTuning('Esperando o vídeo do transmissor…');
     document.body.classList.add('in-room');
-    $('#room-tag').textContent = 'sala ' + room;
+    $('#room-tag').textContent = 'Sala ' + room;
   }
 
   function connect(resume = false) {
@@ -1079,12 +1227,15 @@ const viewer = (function () {
     sock?.close();
     viewerId = null;
     attempt = 0;
-    video.muted = false;
+    setVolume(prefs.read('volume', 100), { save: false }); // desfaz o mudo forçado do autoplay
+    clearTuning();
+    video.onloadeddata = null;
     video.srcObject = null;
+    video.hidden = true;
     setup.hidden = false;
     live.hidden = true;
     document.body.classList.remove('in-room');
-    $('#room-tag').textContent = 'sem sala';
+    $('#room-tag').textContent = 'Sem sala';
     setNet('idle', 'offline');
     chat.detach();
   }
@@ -1119,7 +1270,7 @@ const viewer = (function () {
     setTimeout(() => nameEl.value ? joinBtn.focus() : nameEl.focus(), 300);
   }
 
-  return { isLive: () => joined, fs: () => fullscreen(video), requestedJoin };
+  return { isLive: () => joined, fs: () => fullscreen(video), toggleMute, requestedJoin };
 })();
 
 /* Resposta do amigo a um "pedir pra entrar": aceito entra direto,
@@ -1444,6 +1595,7 @@ addEventListener('keydown', (e) => {
       break;
     case 'm':
       if (host.isLive()) host.mic();
+      else if (viewer.isLive()) viewer.toggleMute();
       break;
     case 's':
       if (host.isLive()) host.switchSource();

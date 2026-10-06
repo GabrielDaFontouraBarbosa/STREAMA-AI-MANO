@@ -1,13 +1,32 @@
 /* ═══════════════════════════════════════════════════════════
    Blink — redesign (dark-first, ancorado em #1ba3b3, a cor da adaga)
 
-   As cinco regras que seguram o visual:
+   As regras que seguram o visual:
    1. Um botão sólido por tela. O resto é contorno ou fantasma.
-   2. Vermelho é só destrutivo. "Ao vivo" é teal.
+   2. Cor é informação: teal = ao vivo, lilás = gente, vermelho = encerrar.
    3. Raio varia com o tamanho: card 12, botão/campo 6, chip 4, avatar redondo.
-   4. Número é sempre mono (código, tempo, contagem).
+   4. Mono só pra dado de verdade (código da sala, contagem). Rótulo é texto.
    5. Divisória em vez de caixa.
+   6. Um gesto de movimento só: a piscada. Abre o título e abre o vídeo.
    ═══════════════════════════════════════════════════════════ */
+
+/* ── 0. Fontes (variáveis, só o subconjunto latino: cobre todo o português) ── */
+
+@font-face {
+  font-family: 'Anybody'; font-style: normal; font-display: swap;
+  font-weight: 500 900; font-stretch: 50% 150%;
+  src: url(fonts/anybody-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans'; font-style: normal; font-display: swap;
+  font-weight: 400 700; font-stretch: 100%;
+  src: url(fonts/instrument-sans-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono'; font-style: normal; font-display: swap;
+  font-weight: 500 700;
+  src: url(fonts/jetbrains-mono-latin.woff2) format('woff2');
+}
 
 /* ── 1. Tokens ─────────────────────────────────────────────── */
 
@@ -17,20 +36,23 @@
   --panel-2: #1B2528;  /* hover, superfície elevada */
   --line:    #293538;  /* todas as divisórias */
   --line-2:  #3B4B4E;  /* borda de botão, trilha */
-  --txt:     #ECF2F3;  /* 17,1:1 */
-  --txt-2:   #9EB0B3;  /* 8,6:1 */
-  --txt-3:   #819498;  /* 6,1:1 — rótulos micro, dicas */
+  --txt:     #EFE9DE;  /* osso quente, 16:1 — tira a frieza de "painel técnico" */
+  --txt-2:   #B3B7AE;  /* 9:1 */
+  --txt-3:   #8C938B;  /* 6:1 — dicas */
   --teal:    #1BA3B3;  /* ação, foco, AO VIVO */
   --teal-up: #28CFE2;  /* hover e texto sobre teal escuro */
   --teal-lo: #11585F;  /* preenchimentos e anéis discretos */
   --on-teal: #07191D;  /* texto em cima do botão teal */
   --danger:  #E04D42;  /* só encerrar transmissão */
+  --lilac:   #B9A8FF;  /* gente: amigos, espectadores, você */
+  --lilac-lo: rgba(185, 168, 255, .14);
 
   --r-card: 12px;
   --r:      6px;
   --r-chip: 4px;
 
-  --sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --display: 'Anybody', 'Instrument Sans', ui-sans-serif, sans-serif;
+  --sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --ease: cubic-bezier(.2, .7, .3, 1);
   --shadow: 0 24px 60px -30px rgba(0, 0, 0, .9);
@@ -53,7 +75,6 @@ body {
   font-family: var(--sans);
   font-size: 15px;
   line-height: 1.55;
-  font-feature-settings: 'ss01' 1;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -64,12 +85,11 @@ img, video { max-width: 100%; }
 
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: 'zero' 1; }
 
-/* micro-rótulo: maiúscula, mono, tracking largo — o tom "engenheiro" do Blink */
+/* rótulo: o texto já está escrito em caixa normal; só fica menor e firme */
 .label-micro, label {
-  font-family: var(--mono);
-  font-size: 10px; line-height: 1;
-  letter-spacing: .14em; text-transform: uppercase;
-  color: var(--txt-3);
+  font-family: var(--sans);
+  font-size: 13px; font-weight: 600; line-height: 1.2;
+  color: var(--txt-2);
 }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
@@ -108,7 +128,8 @@ img, video { max-width: 100%; }
 .brand {
   display: flex; align-items: center; gap: 10px;
   text-decoration: none; color: var(--txt);
-  font-size: 17px; font-weight: 600; letter-spacing: -.02em;
+  font-family: var(--display); font-size: 19px; font-weight: 800;
+  font-stretch: 125%; letter-spacing: -.01em;
 }
 .brand-mark { width: 28px; height: 28px; display: block; }
 
@@ -190,31 +211,39 @@ img, video { max-width: 100%; }
 h1, h2, h3 { margin: 0; letter-spacing: -.03em; color: var(--txt); }
 
 h1 {
-  font-size: clamp(44px, 6.2vw, 72px);
-  font-weight: 700; line-height: 1.02; letter-spacing: -.035em;
+  font-family: var(--display);
+  font-size: clamp(52px, 8vw, 104px);
+  font-weight: 850; font-stretch: 118%;
+  line-height: .9; letter-spacing: -.025em;
 }
-h1 em { position: relative; font-style: normal; color: var(--teal); white-space: nowrap; }
-h1 em svg {
-  position: absolute; left: 0; bottom: -2px; width: 100%; height: 6px;
-  fill: none; stroke: currentColor; stroke-width: 2.5; opacity: .3;
+
+/* A piscada: duas pálpebras da cor do fundo cobrem o título e se abrem a
+   partir de uma fresta teal; depois de um instante, ele pisca uma vez.
+   É o único movimento que acontece sem a pessoa pedir. */
+.blink-title { position: relative; isolation: isolate; }
+.lid {
+  position: absolute; left: -2%; right: -2%; z-index: 1;
+  background: var(--ink); pointer-events: none;
+  /* a piscada não pode ter preenchimento: o "both" aplicava o quadro dela
+     durante o atraso e escondia a abertura inteira */
+  animation: lid-open .7s cubic-bezier(.7, 0, .2, 1) .15s both,
+             lid-blink .24s cubic-bezier(.6, 0, .4, 1) 1.7s none;
 }
+/* com JS, espera a fonte do título carregar: a troca de fonte acontece
+   atrás das pálpebras em vez de pular na cara de quem chegou */
+.js:not(.fonts-ready) .lid { animation-play-state: paused; }
+/* passam um pouco da caixa: acentos em cima, pernas do p e do g embaixo */
+.lid-top { top: -.14em; height: calc(50% + .14em); transform-origin: top; border-bottom: 2px solid var(--teal); }
+.lid-bot { bottom: -.26em; height: calc(50% + .26em); transform-origin: bottom; border-top: 2px solid var(--teal); }
+@keyframes lid-open  { from { transform: scaleY(1); } to { transform: scaleY(0); } }
+@keyframes lid-blink { 0%, 100% { transform: scaleY(0); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .lid { display: none; } }
 
 .lede {
-  max-width: 46ch; margin: 28px 0 0;
-  font-size: 17px; line-height: 1.65; color: var(--txt-2);
+  max-width: 40ch; margin: 32px 0 0;
+  font-size: 18px; line-height: 1.6; color: var(--txt-2);
 }
 
-/* três provas: uma linha só, separadas por hairline */
-.proofs {
-  display: grid; gap: 1px; margin: 48px 0 0; max-width: 46ch;
-  background: var(--line); border: 1px solid var(--line);
-  border-radius: 8px; overflow: hidden;
-}
-@media (min-width: 640px) { .proofs { grid-template-columns: repeat(3, 1fr); } }
-.proofs div { background: var(--ink); padding: 16px; }
-.proofs dd { margin: 0; }
-.proofs dd.mono { margin-top: 8px; font-size: 20px; font-weight: 500; color: var(--txt); }
-.proofs dd:last-child { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--txt-3); }
 
 /* ── 6. Painel (console) ───────────────────────────────────── */
 
@@ -255,11 +284,12 @@ h1 em svg {
 /* estado da conexão */
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--mono); font-size: 10px; font-weight: 700;
-  letter-spacing: .14em; text-transform: uppercase;
-  padding: 4px 8px; border-radius: var(--r-chip);
+  font-size: 12px; font-weight: 600;
+  padding: 4px 9px; border-radius: 999px;
   color: var(--txt-3); box-shadow: inset 0 0 0 1px var(--line);
 }
+#net-label { display: inline-block; }
+#net-label::first-letter { text-transform: uppercase; }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .pill[data-state="live"] { color: var(--teal-up); background: rgba(27, 163, 179, .15); box-shadow: inset 0 0 0 1px rgba(27, 163, 179, .4); }
 .pill[data-state="live"] .pill-dot { animation: pulse 1.6s ease-in-out infinite; }
@@ -284,15 +314,15 @@ h1 em svg {
 
 .field label { display: block; margin-bottom: 8px; }
 
-input:not([type="checkbox"]) {
+input:not([type="checkbox"]):not([type="range"]) {
   width: 100%; height: 44px; padding: 0 12px;
   background: var(--ink); color: var(--txt);
   border: 1px solid var(--line); border-radius: var(--r);
   font-family: inherit; font-size: 15px;
   transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
 }
-input:not([type="checkbox"]):hover { border-color: var(--line-2); }
-input:not([type="checkbox"]):focus {
+input:not([type="checkbox"]):not([type="range"]):hover { border-color: var(--line-2); }
+input:not([type="checkbox"]):not([type="range"]):focus {
   outline: none; border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(27, 163, 179, .25);
 }
@@ -355,8 +385,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .adv summary {
   cursor: pointer; list-style: none;
   display: inline-flex; align-items: center; gap: 8px;
-  font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--txt-3);
+  font-size: 13px; color: var(--txt-3);
 }
 .adv summary::-webkit-details-marker { display: none; }
 .adv summary:hover { color: var(--txt-2); }
@@ -374,11 +403,13 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .stage { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
 .stage:fullscreen { aspect-ratio: auto; height: 100%; }
 
-/* scrim superior: separa o distintivo do conteúdo compartilhado */
-.stage-wrap::before {
-  content: ''; position: absolute; inset: 0 0 auto; height: 72px; z-index: 1;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, .75), transparent);
-  pointer-events: none;
+/* O vídeo chega abrindo como um olho: de uma fresta no meio até a tela
+   inteira. Responde a algo que mudou (o 1º quadro), então não é enfeite. */
+.stage-in { animation: eye-open .55s cubic-bezier(.7, 0, .2, 1) both; }
+@keyframes eye-open {
+  from { clip-path: inset(49.5% 0 49.5% 0); filter: brightness(2.2) saturate(0); }
+  60%  { filter: brightness(1.2) saturate(.8); }
+  to   { clip-path: inset(0 0 0 0); filter: none; }
 }
 .stage-badge { position: absolute; left: 12px; top: 12px; z-index: 2; display: flex; align-items: center; gap: 8px; }
 
@@ -387,14 +418,13 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 8px; border-radius: var(--r-chip);
   background: rgba(27, 163, 179, .15); box-shadow: inset 0 0 0 1px rgba(27, 163, 179, .4);
-  font-family: var(--mono); font-size: 10px; font-weight: 700;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--teal-up);
+  font-size: 12px; font-weight: 600; color: var(--teal-up);
 }
 .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal-up); animation: pulse 1.6s ease-in-out infinite; }
 .stage-note {
-  padding: 4px 8px; border-radius: var(--r-chip); background: rgba(0, 0, 0, .6);
-  font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: rgba(255, 255, 255, .7);
+  padding: 4px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(6px);
+  font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, .8);
 }
 
 /* sintonizando */
@@ -402,19 +432,59 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   width: 100%; aspect-ratio: 16 / 9; background: var(--ink);
 }
-.tuning span {
-  display: block; height: 3px; border-radius: 2px; background: var(--teal);
-  animation: tune 1.6s var(--ease) infinite;
+.tuning span { display: none; }
+.tuning span:nth-child(2) {
+  display: block; width: min(240px, 40%); height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--teal-up), transparent);
+  box-shadow: 0 0 18px 2px rgba(40, 207, 226, .35);
+  animation: slit 2.2s ease-in-out infinite;
 }
-.tuning span:nth-child(1) { width: 56px; }
-.tuning span:nth-child(2) { width: 88px; animation-delay: -.25s; }
-.tuning span:nth-child(3) { width: 40px; animation-delay: -.5s; }
-.tuning p { margin: 14px 0 0; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--txt-3); }
-@keyframes tune { 0%, 100% { transform: scaleX(.3); opacity: .25; } 50% { transform: scaleX(1); opacity: .85; } }
+.tuning p { margin: 22px 0 0; max-width: 34ch; padding: 0 16px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--txt-2); }
+@keyframes slit { 0%, 100% { transform: scaleX(.35); opacity: .5; } 50% { transform: scaleX(1); opacity: 1; } }
 #tuning:not([hidden]) + .stage { display: none; }
 
 .ctrlbar { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .ctrl-spacer { flex: 1; }
+
+/* ── volume do espectador ─────────────────────────────────── */
+.vol { display: flex; align-items: center; gap: 4px; padding-right: 4px; }
+.vol .iconbtn-flat { color: var(--txt-2); }
+.vol .iconbtn-flat:hover { color: var(--teal-up); }
+.vol-range {
+  --v: 100%;
+  -webkit-appearance: none; appearance: none;
+  width: clamp(84px, 18vw, 132px); height: 24px; margin: 0;
+  background: transparent; cursor: pointer;
+}
+/* trilha: a parte até o polegar em teal, o resto na cor da linha */
+.vol-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(to right, var(--teal) var(--v), var(--line-2) var(--v));
+}
+.vol-range::-moz-range-track { height: 4px; border-radius: 999px; background: var(--line-2); }
+.vol-range::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--teal); }
+.vol-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -5px; border-radius: 999px;
+  background: var(--teal-up); border: 2px solid var(--ink);
+  box-shadow: 0 0 0 1px var(--teal);
+  transition: transform .15s var(--ease);
+}
+.vol-range::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 999px;
+  background: var(--teal-up); border: 2px solid var(--ink);
+  transition: transform .15s var(--ease);
+}
+.vol-range:hover::-webkit-slider-thumb, .vol-range:active::-webkit-slider-thumb { transform: scale(1.2); }
+.vol-range:hover::-moz-range-thumb, .vol-range:active::-moz-range-thumb { transform: scale(1.2); }
+.vol-range:focus-visible { outline: none; }
+.vol-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--teal-lo), 0 0 0 1px var(--teal-up); }
+.vol-val { width: 3ch; text-align: right; font-size: 11px; color: var(--txt-3); font-variant-numeric: tabular-nums; }
+
+/* navegador barrou o som: o ícone pulsa até a pessoa mexer no volume */
+.vol.blocked .iconbtn-flat { color: var(--teal-up); animation: vol-nudge 1.6s var(--ease) infinite; }
+@keyframes vol-nudge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) { .vol.blocked .iconbtn-flat { animation: none; } }
 
 .codebox {
   margin-top: 16px; padding: 20px;
@@ -463,10 +533,11 @@ li.empty:hover { background: none; }
 }
 
 .friend-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line-2); }
-.friend-dot[data-status="online"] { background: var(--txt-2); }
+.friend-dot[data-status="online"] { background: var(--lilac); }
 .friend-dot[data-status="live"] { background: var(--teal-up); animation: pulse 1.6s ease-in-out infinite; }
 .friend-name { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.friend-sub { margin-left: 6px; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--txt-3); }
+.friend-sub { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--txt-3); }
+.viewer-list .avatar, .friend-list .avatar, .me-chip .avatar, .request-list .avatar { background: var(--lilac-lo); color: var(--lilac); }
 .friend-rm { width: 30px; height: 30px; border-color: transparent; color: var(--txt-3); }
 .friend-rm .ic { width: 15px; height: 15px; }
 .friend-rm:hover { color: var(--danger); border-color: rgba(224, 77, 66, .4); }
@@ -497,7 +568,7 @@ li.empty:hover { background: none; }
 }
 .chat-log li { font-size: 13px; line-height: 1.45; color: var(--txt); word-break: break-word; }
 .chat-log b { margin-right: 8px; font-weight: 600; color: var(--txt-2); }
-.chat-log li.sys { font-family: var(--mono); font-size: 11px; color: var(--txt-3); }
+.chat-log li.sys { font-size: 12px; font-style: italic; color: var(--txt-3); }
 .chat-form {
   display: flex; align-items: center; gap: 8px;
   margin: 0 12px 12px; padding: 0 4px 0 12px;
@@ -510,7 +581,8 @@ li.empty:hover { background: none; }
 
 body.in-room .hero,
 body.in-room .console-foot { display: none; }
-body.in-room .page { grid-template-columns: minmax(0, 1fr); max-width: 1400px; padding-top: 24px; }
+body.in-room .page { grid-template-columns: minmax(0, 1fr); max-width: 1640px; padding-top: 16px; padding-bottom: 32px; }
+body.in-room .stage { max-height: calc(100svh - 250px); }
 
 @media (min-width: 1024px) {
   body.in-room .console {
@@ -588,8 +660,7 @@ body.in-room .page { grid-template-columns: minmax(0, 1fr); max-width: 1400px; p
 .auth[open] { animation: paneIn .25s var(--ease) both; }
 .auth-inner { padding: 28px; }
 .auth-mark { display: block; width: 56px; height: 56px; margin-bottom: 20px; }
-.auth h2 { font-size: 28px; font-weight: 700; line-height: 1.06; }
-.auth h2 em { font-style: normal; color: var(--teal); }
+.auth h2 { font-family: var(--display); font-size: 30px; font-weight: 850; font-stretch: 118%; line-height: 1; }
 .auth-sub { margin: 8px 0 24px; font-size: 14px; color: var(--txt-2); }
 .auth-tabs { margin-bottom: 24px; }
 .auth-error {
