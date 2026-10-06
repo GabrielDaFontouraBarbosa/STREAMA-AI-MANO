@@ -14,30 +14,31 @@ function safeParse(raw) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-/* Fecha um socket que estamos descartando sem deixar os handlers dele
-   rodarem depois. O evento `close` chega assíncrono: se nesse meio-tempo
-   uma sessão nova já abriu, o handler antigo mexeria no estado dela
-   (matando o heartbeat novo, ou chamando leave() na sala nova). */
-function closeQuietly(ws) {
-  if (!ws) return;
-  ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
-  try { ws.close(); } catch { /* já estava fechando */ }
-}
-
 /* ICE vem do servidor (/api/ice): STUN sempre, TURN da Cloudflare quando
    configurado. A credencial TURN é temporária e nunca fica no HTML. */
 const ICE_FALLBACK = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
 let iceCache = null;
-async function loadIce() {
-  if (iceCache && iceCache.until > Date.now()) return iceCache.servers;
+/* `sala`: espectador sem conta ganha TURN se o código for de uma sala aberta. */
+async function loadIce(sala) {
+  if (iceCache && iceCache.until > Date.now() && (iceCache.turn || !sala)) return iceCache.servers;
   try {
-    const j = await fetch('/api/ice', { credentials: 'same-origin' }).then((r) => r.json());
-    iceCache = { servers: j.iceServers?.length ? j.iceServers : ICE_FALLBACK, until: Date.now() + 30 * 60e3 };
+    const q = sala ? '?sala=' + encodeURIComponent(sala) : '';
+    const j = await fetch('/api/ice' + q, { credentials: 'same-origin' }).then((r) => r.json());
+    iceCache = { servers: j.iceServers?.length ? j.iceServers : ICE_FALLBACK, turn: !!j.turn, until: Date.now() + 30 * 60e3 };
   } catch {
-    iceCache = { servers: ICE_FALLBACK, until: Date.now() + 60e3 };
+    iceCache = { servers: ICE_FALLBACK, turn: false, until: Date.now() + 60e3 };
   }
   return iceCache.servers;
 }
+
+/* Reconexão do WebSocket de sinalização: 1s, 2s, 4s… até 8s, e desiste
+   depois de RESUME_WINDOW (o servidor segura a sala por 45s). */
+const RESUME_WINDOW = 42000;
+const backoff = (n) => Math.min(1000 * 2 ** n, 8000);
+
+/* Mídia P2P oscilou: 'disconnected' costuma voltar sozinho em segundos;
+   se não voltar, ou se der 'failed', renegocia o ICE (troca de rota). */
+const ICE_GRACE_MS = 3500;
 // Síncrono: usado dentro dos handlers de sinalização (já pré-carregado).
 const iceNow = () => iceCache?.servers ?? ICE_FALLBACK;
 const DEFAULT_WS = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
@@ -48,9 +49,7 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const NS = 'blink:';
 const NS_LEGACY = 'sam:'; // prefixo da marca anterior
 
-/* Copia as preferências do prefixo antigo pro novo. Trocar o prefixo sem
-   migrar apagaria o id pessoal de quem já usava — e id novo quer dizer que
-   todos os amigos que já te adicionaram nunca mais te encontram. As chaves
+/* Copia as preferências do prefixo antigo pro novo, uma vez só. As chaves
    antigas ficam onde estão: não custam nada e servem de rede de segurança. */
 (function migratePrefs() {
   try {
@@ -112,205 +111,11 @@ function actionToast(text, actions, ms = 20000, onTimeout) {
   $('#toasts').append(el);
 }
 
-/* ── Tema ──────────────────────────────────────────────────── */
+/* ── Service worker (PWA + avisos push) ────────────────────── */
 
-(function theme() {
-  const btn = $('#theme-btn');
-  const saved = prefs.read('theme', null);
-  if (saved) document.documentElement.dataset.theme = saved;
-
-  const paint = () => {
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === 'dark'
-      : !matchMedia('(prefers-color-scheme: light)').matches;
-    const icon = btn.querySelector('use');
-    icon.setAttribute('href', dark ? '#i-sun' : '#i-moon');
-    btn.setAttribute('aria-label', dark ? 'Modo claro' : 'Modo escuro');
-    btn.title = dark ? 'Mudar para claro' : 'Mudar para escuro';
-  };
-  paint();
-
-  btn.onclick = () => {
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === 'dark'
-      : !matchMedia('(prefers-color-scheme: light)').matches;
-    const next = dark ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    prefs.write('theme', next);
-    paint();
-  };
-})();
-
-/* ── Instalar como app ─────────────────────────────────────── */
-
-(function install() {
-  const btn = $('#install-btn');
-  let deferred = null;
-
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferred = e;
-    btn.hidden = false;
-  });
-
-  btn.onclick = async () => {
-    if (!deferred) return;
-    deferred.prompt();
-    const { outcome } = await deferred.userChoice;
-    if (outcome === 'accepted') toast('Instalado! Procura o atalho no seu sistema.', 'ok');
-    deferred = null;
-    btn.hidden = true;
-  };
-
-  window.addEventListener('appinstalled', () => {
-    btn.hidden = true;
-    toast('Pronto, virou app.', 'ok');
-  });
-
-  if ('serviceWorker' in navigator) {
-    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
-})();
-
-/* ── Grão de película ──────────────────────────────────────── */
-
-(function grain() {
-  if (REDUCED) return;
-  const cv = $('#grain');
-  const ctx = cv.getContext('2d', { alpha: true });
-
-  // Um tile de 128×128 redesenhado por frame custa ~16k pixels.
-  // Preencher a tela inteira custaria ~2M. O padrão repete o tile.
-  const SIZE = 128;
-  const tile = document.createElement('canvas');
-  tile.width = tile.height = SIZE;
-  const tctx = tile.getContext('2d');
-  const img = tctx.createImageData(SIZE, SIZE);
-
-  function resize() {
-    cv.width = innerWidth;
-    cv.height = innerHeight;
-  }
-  resize();
-  addEventListener('resize', resize, { passive: true });
-
-  let last = 0;
-  let running = true;
-  let scheduled = false;
-
-  // O `scheduled` garante um único loop vivo. Sem ele, ao voltar pra aba o
-  // visibilitychange agendava um frame novo enquanto o frame que estava
-  // pendente desde antes também retomava — dois loops. A cada ida e volta
-  // sobrava mais um, e o custo de CPU ia subindo sem motivo aparente.
-  function schedule() {
-    if (scheduled || !running) return;
-    scheduled = true;
-    requestAnimationFrame(loop);
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    running = !document.hidden;
-    schedule();
-  });
-
-  function loop(now) {
-    scheduled = false;
-    if (!running) return;
-    // 15fps: grão de filme não precisa de 60.
-    if (now - last > 66) {
-      last = now;
-      const d = img.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const v = (Math.random() * 255) | 0;
-        d[i] = d[i + 1] = d[i + 2] = v;
-        d[i + 3] = 255;
-      }
-      tctx.putImageData(img, 0, 0);
-      ctx.fillStyle = ctx.createPattern(tile, 'repeat');
-      ctx.fillRect(0, 0, cv.width, cv.height);
-    }
-    schedule();
-  }
-  schedule();
-})();
-
-/* ── Onda do topo ──────────────────────────────────────────── */
-
-(function wave() {
-  if (REDUCED) return;
-  const cv = $('#wave');
-  const ctx = cv.getContext('2d');
-  let w = 0, h = 0, t = 0, running = true;
-
-  function resize() {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const r = cv.getBoundingClientRect();
-    w = r.width; h = r.height;
-    cv.width = w * dpr; cv.height = h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  resize();
-  addEventListener('resize', resize, { passive: true });
-
-  let scheduled = false;
-  function schedule() {
-    if (scheduled || !running) return;
-    scheduled = true;
-    requestAnimationFrame(loop);
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    running = !document.hidden;
-    schedule();
-  });
-
-  // Três harmônicas sobrepostas: parece sinal, não parece decoração.
-  const LAYERS = [
-    { amp: 0.20, freq: 1.4, speed: 0.0011, alpha: 0.5, width: 1.6 },
-    { amp: 0.13, freq: 2.7, speed: -0.0016, alpha: 0.3, width: 1.2 },
-    { amp: 0.07, freq: 4.9, speed: 0.0023, alpha: 0.2, width: 1 },
-  ];
-
-  function loop(now) {
-    scheduled = false;
-    if (!running) return;
-    t = now;
-    ctx.clearRect(0, 0, w, h);
-    const color = getComputedStyle(document.documentElement).getPropertyValue('--signal').trim();
-    const mid = h * 0.52;
-
-    for (const L of LAYERS) {
-      ctx.beginPath();
-      for (let x = 0; x <= w; x += 3) {
-        const phase = (x / w) * Math.PI * 2 * L.freq + t * L.speed;
-        // Envelope: a onda morre nas bordas em vez de cortar reto.
-        const env = Math.sin((x / w) * Math.PI);
-        const y = mid + Math.sin(phase) * h * L.amp * env;
-        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.globalAlpha = L.alpha;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = L.width;
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    schedule();
-  }
-  schedule();
-})();
-
-/* ── Revelação no scroll ───────────────────────────────────── */
-
-(function reveals() {
-  // Se o navegador tem scroll-driven animations, o CSS já resolve.
-  if (CSS.supports('animation-timeline: view()') || REDUCED) return;
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
-    }
-  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.1 });
-  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
-})();
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
 
 /* ── Abas ──────────────────────────────────────────────────── */
 
@@ -330,9 +135,8 @@ const tabs = (function () {
       const on = b.dataset.tab === name;
       b.classList.toggle('active', on);
       b.setAttribute('aria-selected', String(on));
-      // Roving tabindex: num tablist, Tab entra e sai do grupo inteiro e
-      // são as setas que andam entre as abas. Sem isso o teclado para em
-      // cada uma das três antes de chegar no formulário.
+      // Roving tabindex: Tab entra e sai do grupo inteiro, as setas andam
+      // entre as abas. Sem isso o teclado para em cada uma das três.
       b.tabIndex = on ? 0 : -1;
     });
     document.querySelectorAll('.pane').forEach((p) => {
@@ -355,7 +159,8 @@ const tabs = (function () {
       next.focus();
     };
   });
-  addEventListener('resize', moveInk, { passive: true });
+  // Observa as próprias abas: o layout muda ao entrar na sala, não só no resize.
+  new ResizeObserver(moveInk).observe($('.tabs'));
   document.fonts?.ready.then(moveInk);
   requestAnimationFrame(moveInk);
 
@@ -573,6 +378,8 @@ const account = (function () {
     $('#me-chip').hidden = !me;
     $('#logout-btn').hidden = !me;
     $('#login-btn').hidden = !!me;
+    $('#signup-btn').hidden = !!me;
+    $('#guest-note').hidden = !!me;
     if (me) {
       $('#me-name').textContent = me.name;
       $('#me-avatar').textContent = initials(me.name);
@@ -671,8 +478,17 @@ const host = (function () {
   let roomCode = '';
   let links = { room: null, profile: null };
   let mode = prefs.read('mode', 'screen');
+  let attempt = 0;           // tentativas de reconexão seguidas
+  let resumeUntil = 0;       // depois disso, desiste da sala
+  let retryTimer = null;
   const peers = new Map();   // viewerId → RTCPeerConnection
   const names = new Map();   // viewerId → nome
+  const iceTimers = new Map();   // viewerId → timer do 'disconnected'
+  const restarts = new Map();    // viewerId → ICE restarts seguidos
+
+  // Mensagem pro servidor só se o socket estiver aberto; fechado, a
+  // renegociação acontece de novo quando ele voltar (room-resumed).
+  const sig = (msg) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
 
   serverEl.value = DEFAULT_WS;
   // Logado, o nome vem da conta (o servidor ignora o que o cliente mandar).
@@ -716,61 +532,115 @@ const host = (function () {
     }
   }
 
+  function dropPeer(viewerId) {
+    clearTimeout(iceTimers.get(viewerId));
+    iceTimers.delete(viewerId);
+    restarts.delete(viewerId);
+    peers.get(viewerId)?.close();
+    peers.delete(viewerId);
+  }
+
   async function offerTo(viewerId) {
+    dropPeer(viewerId); // oferta nova sempre começa de uma conexão limpa
     const pc = new RTCPeerConnection({ iceServers: iceNow() });
-    // Candidatos que chegarem antes do setRemoteDescription ficam aqui.
-    // addIceCandidate rejeita enquanto não existe descrição remota, e como
-    // o onmessage é async as duas mensagens podem ser tratadas em paralelo.
+    // Candidatos que chegarem antes do setRemoteDescription ficam aqui:
+    // addIceCandidate rejeita sem descrição remota, e o onmessage é async.
     pc.pendingIce = [];
     peers.set(viewerId, pc);
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     pc.onicecandidate = (e) => {
-      if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', viewerId, candidate: e.candidate }));
+      if (e.candidate) sig({ type: 'ice-candidate', viewerId, candidate: e.candidate });
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') {
-        toast(`Conexão com ${names.get(viewerId) || 'espectador'} falhou.`, 'err');
-      }
+      if (peers.get(viewerId) !== pc) return;
+      const st = pc.connectionState;
+      clearTimeout(iceTimers.get(viewerId));
+      if (st === 'connected') restarts.delete(viewerId);
+      else if (st === 'disconnected') iceTimers.set(viewerId, setTimeout(() => restartIce(viewerId), ICE_GRACE_MS));
+      else if (st === 'failed') restartIce(viewerId);
     };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({ type: 'offer', viewerId, sdp: offer }));
+    sig({ type: 'offer', viewerId, sdp: pc.localDescription, fresh: true });
   }
 
-  function connect() {
-    // URL inválida (campo apagado, ws:// faltando) faz o construtor lançar.
-    // Sem isso a captura já tinha começado e a tela ficava "ao vivo" sem
-    // nenhuma sala do outro lado.
+  // Troca a rota da mídia sem derrubar a conexão (nem o vídeo do outro lado).
+  // Três tentativas seguidas sem voltar: recomeça a conexão do zero.
+  async function restartIce(viewerId) {
+    const pc = peers.get(viewerId);
+    if (!pc || !stream || pc.connectionState === 'connected') return;
+    const n = (restarts.get(viewerId) || 0) + 1;
+    if (n > 3) {
+      toast(`Conexão com ${names.get(viewerId) || 'espectador'} instável — recomeçando.`, 'err');
+      offerTo(viewerId).catch(() => {});
+      return;
+    }
+    restarts.set(viewerId, n);
+    if (pc.signalingState !== 'stable') {
+      // Oferta anterior ficou sem resposta (sinalização caiu no meio).
+      await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+    }
     try {
-      ws = new WebSocket(serverEl.value);
-    } catch {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      sig({ type: 'offer', viewerId, sdp: pc.localDescription });
+    } catch { /* tenta de novo no próximo 'failed' */ }
+  }
+
+  // Volta pra sala depois de queda: quem já tem conexão P2P boa fica como
+  // está; quem não tem (ou entrou enquanto estávamos fora) recebe oferta.
+  async function syncPeer(viewerId, name) {
+    if (name) names.set(viewerId, name);
+    const pc = peers.get(viewerId);
+    const ok = pc && pc.signalingState === 'stable' && !['failed', 'closed'].includes(pc.connectionState);
+    if (!ok) await offerTo(viewerId);
+  }
+
+  function connect(resume = false) {
+    clearTimeout(retryTimer);
+    // URL inválida (campo apagado, ws:// faltando) faz o construtor lançar.
+    try { ws = new WebSocket(serverEl.value); } catch {
       toast('Endereço do servidor inválido.', 'err', 5000);
       stop();
       return;
     }
-    setNet('wait', 'abrindo…');
+    const sock = ws;
+    if (!resume) setNet('wait', 'abrindo…');
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'host-create-room', source: mode }));
+    sock.onopen = () => {
+      sock.send(JSON.stringify(resume
+        ? { type: 'host-resume', roomCode, source: mode }
+        : { type: 'host-create-room', source: mode }));
       // Proxies (Railway incluso) matam WebSocket ocioso. Um ping leve segura.
-      heartbeat = setInterval(() => {
-        if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-      }, 25000);
+      clearInterval(heartbeat);
+      heartbeat = setInterval(() => sig({ type: 'ping' }), 20000);
     };
 
-    ws.onmessage = async (ev) => {
+    sock.onmessage = async (ev) => {
+      if (ws !== sock) return;
       const m = safeParse(ev.data);
       if (!m) return;
       switch (m.type) {
         case 'room-created':
+          attempt = 0;
           roomCode = m.roomCode;
           links = m.links || { room: `/s/${roomCode}`, profile: null };
           $('#copy-profile').hidden = !links.profile;
           scramble(codeEl, roomCode);
           $('#room-tag').textContent = 'sala ' + roomCode;
           setNet('live', 'no ar');
-          chat.attach(ws);
+          chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
+          break;
+
+        case 'room-resumed':
+          attempt = 0;
+          links = m.links || links;
+          setNet('live', 'no ar');
+          chat.attach(sock);
+          chat.push('', 'Conexão com o servidor voltou.', true);
+          for (const v of m.viewers || []) await syncPeer(v.viewerId, v.name);
+          renderViewers();
           break;
 
         case 'viewer-joined':
@@ -780,13 +650,20 @@ const host = (function () {
           toast(`${m.name || 'Alguém'} entrou.`, 'ok');
           break;
 
+        case 'viewer-resumed':
+          await syncPeer(m.viewerId, m.name);
+          renderViewers();
+          break;
+
+        case 'restart-ice':
+          restartIce(m.viewerId);
+          break;
+
         case 'answer': {
           const pc = peers.get(m.viewerId);
-          if (!pc) break;
-          await pc.setRemoteDescription(m.sdp);
-          // Agora que existe descrição remota, drena o que ficou na fila.
-          const queued = pc.pendingIce.splice(0);
-          for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
+          if (pc?.signalingState !== 'have-local-offer') break;
+          await pc.setRemoteDescription(m.sdp).catch(() => {});
+          for (const c of pc.pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {});
           break;
         }
 
@@ -799,9 +676,7 @@ const host = (function () {
         }
 
         case 'viewer-left': {
-          const pc = peers.get(m.viewerId);
-          pc?.close();
-          peers.delete(m.viewerId);
+          dropPeer(m.viewerId);
           const who = names.get(m.viewerId);
           names.delete(m.viewerId);
           renderViewers();
@@ -820,10 +695,20 @@ const host = (function () {
       }
     };
 
-    ws.onclose = () => {
-      if (stream) { toast('Perdi a conexão com o servidor.', 'err'); stop(); }
+    // Caiu a sinalização: o vídeo P2P continua. Reconecta e retoma a mesma sala.
+    sock.onclose = () => {
+      if (ws !== sock || !stream) return;
+      clearInterval(heartbeat);
+      if (!roomCode) { toast('Não consegui abrir a sala. Tenta de novo.', 'err'); stop(); return; }
+      if (attempt === 0) resumeUntil = Date.now() + RESUME_WINDOW;
+      if (Date.now() > resumeUntil) {
+        toast('Sem conexão com o servidor há muito tempo. Transmissão encerrada.', 'err', 6000);
+        stop();
+        return;
+      }
+      setNet('wait', 'reconectando…');
+      retryTimer = setTimeout(() => connect(true), backoff(attempt++));
     };
-    ws.onerror = () => toast('Erro no servidor de sinalização.', 'err');
   }
 
   async function start() {
@@ -859,25 +744,30 @@ const host = (function () {
     micBtn.hidden = !stream.getAudioTracks().length;
     setup.hidden = true;
     live.hidden = false;
+    document.body.classList.add('in-room');
     renderViewers();
     connect();
   }
 
   function stop() {
-    peers.forEach((pc) => pc.close());
-    peers.clear();
+    for (const id of [...peers.keys()]) dropPeer(id);
     names.clear();
     stream?.getTracks().forEach((t) => t.stop());
     stream = null;
     video.srcObject = null;
-    clearInterval(heartbeat); heartbeat = null;
-    closeQuietly(ws);
+    clearInterval(heartbeat);
+    clearTimeout(retryTimer);
+    attempt = 0;
+    sig({ type: 'leave' }); // saída de propósito: o servidor encerra na hora
+    const sock = ws;
     ws = null;
+    sock?.close();
     roomCode = '';
     links = { room: null, profile: null };
     $('#copy-profile').hidden = true;
     setup.hidden = false;
     live.hidden = true;
+    document.body.classList.remove('in-room');
     codeEl.textContent = '------';
     $('#room-tag').textContent = 'sem sala';
     setNet('idle', 'offline');
@@ -935,6 +825,9 @@ const host = (function () {
     ], 20000, () => social.respond(from.id, false));
   });
 
+  // Fechou a aba: avisa que foi de propósito (senão a sala espera 45s pela volta).
+  addEventListener('pagehide', () => sig({ type: 'leave' }));
+
   startBtn.onclick = start;
   stopBtn.onclick = stop;
   switchBtn.onclick = switchSource;
@@ -985,8 +878,6 @@ const viewer = (function () {
   const tuning = $('#tuning');
 
   let ws = null, pc = null, heartbeat = null, joined = false;
-  let pendingIce = [];
-  const wrapEl = $('.console-wrap');
 
   serverEl.value = DEFAULT_WS;
   $('#viewer-name-field').hidden = !!account.me;
@@ -997,87 +888,116 @@ const viewer = (function () {
   });
   codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
 
+  let viewerId = null, room = '', attempt = 0, resumeUntil = 0, retryTimer = null, iceTimer = null;
+  let pendingIce = []; // candidatos que chegaram antes da oferta ser aplicada
+  const sig = (msg) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
+
+  // Som liberado só com gesto do usuário. Se o navegador barrar o autoplay,
+  // toca mudo (melhor que tela preta parecendo "caiu") e avisa.
+  function play() {
+    video.play().catch(() => {
+      video.muted = true;
+      video.play().catch(() => {});
+      actionToast('O navegador bloqueou o som.', [{ label: 'Ativar som', run: () => { video.muted = false; video.play().catch(() => {}); } }], 15000);
+    });
+  }
+
   function setupPeer() {
-    pc?.close(); // se o host reofertar, não deixa a conexão antiga pendurada
-    pc = new RTCPeerConnection({ iceServers: iceNow() });
-    pc.ontrack = (e) => {
-      video.srcObject = e.streams[0];
+    pc?.close();
+    clearTimeout(iceTimer);
+    pendingIce = [];
+    const conn = new RTCPeerConnection({ iceServers: iceNow() });
+    pc = conn;
+    conn.ontrack = (e) => {
+      if (video.srcObject !== e.streams[0]) { video.srcObject = e.streams[0]; play(); }
       tuning.hidden = true;
       video.hidden = false;
       setNet('live', 'ao vivo');
     };
-    pc.onicecandidate = (e) => {
-      if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: e.candidate }));
+    conn.onicecandidate = (e) => {
+      if (e.candidate) sig({ type: 'ice-candidate', candidate: e.candidate });
     };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') toast('Conexão P2P falhou. Rede muito restrita?', 'err', 5000);
+    // Mídia oscilou: espera um pouco (costuma voltar sozinha) e, se não
+    // voltar, pede pro host trocar a rota (ICE restart). O vídeo congela
+    // no último frame em vez de a sala fechar.
+    conn.onconnectionstatechange = () => {
+      if (pc !== conn) return;
+      clearTimeout(iceTimer);
+      const st = conn.connectionState;
+      if (st === 'connected') { setNet('live', 'ao vivo'); return; }
+      if (st === 'disconnected' || st === 'failed') {
+        setNet('wait', 'instável…');
+        iceTimer = setTimeout(() => sig({ type: 'restart-ice' }), st === 'failed' ? 0 : ICE_GRACE_MS);
+      }
     };
   }
 
-  async function join() {
-    const code = codeEl.value.trim().toUpperCase();
-    if (code.length !== 6) { toast('O código tem 6 caracteres.', 'err'); codeEl.focus(); return; }
+  function showRoom() {
+    setup.hidden = true;
+    live.hidden = false;
+    video.hidden = true;
+    tuning.hidden = false;
+    document.body.classList.add('in-room');
+    $('#room-tag').textContent = 'sala ' + room;
+  }
 
-    // Entrar por cima de uma sessão aberta deixava ws, pc e o interval do
-    // heartbeat pendurados pra sempre (o `join` por convite de amigo entra
-    // sem passar pelo botão, que é o que normalmente bloqueia isso).
-    if (ws || joined) leave();
-
-    if (!account.me) prefs.write('name', nameEl.value.trim());
-    joinBtn.disabled = true;
-    setNet('wait', 'conectando…');
-    await loadIce(); // ICE pronto antes da oferta chegar
-
-    try {
-      ws = new WebSocket(serverEl.value);
-    } catch {
+  function connect(resume = false) {
+    clearTimeout(retryTimer);
+    try { ws = new WebSocket(serverEl.value); } catch {
       toast('Endereço do servidor inválido.', 'err', 5000);
-      joinBtn.disabled = false;
-      setNet('idle', 'offline');
+      if (joined) leave();
+      else { joinBtn.disabled = false; setNet('idle', 'offline'); }
       return;
     }
+    const sock = ws;
+    const name = nameEl.value.trim() || 'Anônimo';
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'viewer-join', roomCode: code, name: nameEl.value.trim() || 'Anônimo' }));
-      heartbeat = setInterval(() => {
-        if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-      }, 25000);
+    sock.onopen = () => {
+      sock.send(JSON.stringify(resume
+        ? { type: 'viewer-resume', roomCode: room, viewerId, name }
+        : { type: 'viewer-join', roomCode: room, name }));
+      clearInterval(heartbeat);
+      heartbeat = setInterval(() => sig({ type: 'ping' }), 20000);
     };
 
-    ws.onmessage = async (ev) => {
+    sock.onmessage = async (ev) => {
+      if (ws !== sock) return;
       const m = safeParse(ev.data);
       if (!m) return;
       switch (m.type) {
         case 'joined':
+          attempt = 0;
+          viewerId = m.viewerId;
+          chat.attach(sock);
+          if (m.resumed) {
+            chat.push('', 'Conexão com o servidor voltou.', true);
+            if (pc?.connectionState === 'connected') setNet('live', 'ao vivo');
+            break;
+          }
           joined = true;
           joinBtn.disabled = false;
-          setup.hidden = true;
-          live.hidden = false;
-          video.hidden = true;
-          tuning.hidden = false;
-          wrapEl.classList.add('wide');
-          $('#room-tag').textContent = 'sala ' + code;
-          chat.attach(ws);
+          showRoom();
           chat.push('', 'Você entrou na sala.', true);
           break;
 
-        case 'offer': {
-          setupPeer();
-          await pc.setRemoteDescription(m.sdp);
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
-          // O host já começou a trilhar candidatos enquanto isso: aplica os
-          // que chegaram antes da descrição remota existir.
-          const queued = pendingIce.splice(0);
-          for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
+        case 'offer':
+          // Oferta nova (fresh) = conexão do zero. Senão é ICE restart na
+          // conexão atual: o vídeo segue tocando enquanto a rota troca.
+          if (m.fresh || !pc || pc.connectionState === 'closed') setupPeer();
+          try {
+            await pc.setRemoteDescription(m.sdp);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            sig({ type: 'answer', sdp: pc.localDescription });
+            for (const c of pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {});
+          } catch {
+            sig({ type: 'restart-ice' });
+          }
           break;
-        }
 
         case 'ice-candidate':
           if (!m.candidate) break;
-          // Perder candidato aqui não dá erro visível — só faz a conexão
-          // falhar ou demorar, porque sobra menos caminho pra tentar.
+          // Perder candidato não dá erro visível: só sobra menos caminho.
           if (pc?.remoteDescription) await pc.addIceCandidate(m.candidate).catch(() => {});
           else pendingIce.push(m.candidate);
           break;
@@ -1091,35 +1011,79 @@ const viewer = (function () {
           leave();
           break;
 
+        case 'resume-failed':
+          if (m.retry) sock.close(); // onclose agenda a próxima tentativa
+          else { toast('Não deu pra voltar pra sala.', 'err'); leave(); }
+          break;
+
         case 'error':
           toast(m.message, 'err', 5000);
+          if (joined) { leave(); break; }
           joinBtn.disabled = false;
           setNet('idle', 'offline');
-          ws.close();
+          ws = null;
+          sock.close();
           break;
       }
     };
 
-    ws.onclose = () => {
+    // Caiu a sinalização: o vídeo P2P continua. Reconecta e retoma a mesma sala.
+    sock.onclose = () => {
+      if (ws !== sock) return;
       clearInterval(heartbeat);
-      joinBtn.disabled = false;
-      if (joined) { toast('Conexão encerrada.', 'err'); leave(); }
+      if (!joined) {
+        joinBtn.disabled = false;
+        setNet('idle', 'offline');
+        toast('Não consegui falar com o servidor.', 'err');
+        return;
+      }
+      if (attempt === 0) resumeUntil = Date.now() + RESUME_WINDOW;
+      if (Date.now() > resumeUntil) {
+        toast('Sem conexão com o servidor há muito tempo. Saí da sala.', 'err', 6000);
+        leave();
+        return;
+      }
+      if (pc?.connectionState !== 'connected') setNet('wait', 'reconectando…');
+      retryTimer = setTimeout(() => connect(true), backoff(attempt++));
     };
-    ws.onerror = () => { toast('Não consegui falar com o servidor.', 'err'); joinBtn.disabled = false; };
+  }
+
+  async function join() {
+    const code = codeEl.value.trim().toUpperCase();
+    if (code.length !== 6) { toast('O código tem 6 caracteres.', 'err'); codeEl.focus(); return; }
+
+    // Convite de amigo chama join() direto, sem passar pelo botão: sem isso
+    // ws, pc e o heartbeat da sessão anterior ficavam pendurados.
+    if (ws || joined) leave();
+
+    if (!account.me) prefs.write('name', nameEl.value.trim());
+    joinBtn.disabled = true;
+    setNet('wait', 'conectando…');
+    room = code;
+    viewerId = null;
+    attempt = 0;
+    await loadIce(code); // ICE pronto antes da oferta chegar
+    connect(false);
   }
 
   function leave() {
     joined = false;
+    sig({ type: 'leave' }); // saída de propósito: o host fecha a conexão na hora
+    clearTimeout(iceTimer);
+    clearTimeout(retryTimer);
     pc?.close(); pc = null;
     pendingIce = [];
-    clearInterval(heartbeat); heartbeat = null;
-    closeQuietly(ws); ws = null;
+    clearInterval(heartbeat);
+    const sock = ws;
+    ws = null;
+    sock?.close();
+    viewerId = null;
+    attempt = 0;
+    video.muted = false;
     video.srcObject = null;
-    video.hidden = true;
-    tuning.hidden = true;
     setup.hidden = false;
     live.hidden = true;
-    wrapEl.classList.remove('wide');
+    document.body.classList.remove('in-room');
     $('#room-tag').textContent = 'sem sala';
     setNet('idle', 'offline');
     chat.detach();
@@ -1132,6 +1096,8 @@ const viewer = (function () {
     codeEl.value = code;
     join();
   }
+
+  addEventListener('pagehide', () => sig({ type: 'leave' }));
 
   joinBtn.onclick = join;
   leaveBtn.onclick = leave;
@@ -1354,8 +1320,8 @@ const friends = (function () {
   });
   social.on('friend-accepted', ({ by }) => toast(`${by.name} aceitou seu pedido!`, 'ok'));
   social.on('friend-went-live', ({ userId, name }) => {
-    if (host.isLive() || viewer.isLive()) { toast(`🔴 ${name} entrou ao vivo.`); return; }
-    actionToast(`🔴 ${name} entrou ao vivo.`, [
+    if (host.isLive() || viewer.isLive()) { toast(`${name} entrou ao vivo.`); return; }
+    actionToast(`${name} entrou ao vivo.`, [
       { label: 'Pedir pra entrar', run: () => requestJoin(userId, name) },
       { label: 'Depois', run: () => {} },
     ], 12000);

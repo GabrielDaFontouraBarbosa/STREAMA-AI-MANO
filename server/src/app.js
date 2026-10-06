@@ -11,6 +11,7 @@ import * as friends from './friends.js';
 import * as hub from './hub.js';
 import * as push from './push.js';
 import { getIceServers, turnConfigured } from './turn.js';
+import { isRoomOpen } from './signaling.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -57,10 +58,13 @@ export function createApp() {
   }));
 
   /* ── ICE / TURN ────────────────────────────────────────── */
-  // Só logado pede credencial TURN (evita virar relay grátis pra qualquer um).
+  // TURN só pra quem está logado ou tem o código de uma sala aberta agora
+  // (evita virar relay grátis pra qualquer um). Sem isso, espectador anônimo
+  // atrás de NAT restrito ficava em "Sintonizando…" pra sempre.
   app.get('/api/ice', wrap(async (req, res) => {
-    const s = await sessionOf(req);
-    if (!s) return res.json({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }], turn: false });
+    const sala = String(req.query.sala ?? '').toUpperCase();
+    const allowed = (ROOM_RE.test(sala) && isRoomOpen(sala)) || !!(await sessionOf(req));
+    if (!allowed) return res.json({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }], turn: false });
     res.json(await getIceServers());
   }));
 

@@ -3,6 +3,10 @@
 //
 // A sessão do Better Auth é lida do cookie no upgrade: o servidor sabe quem
 // é cada conexão e não confia em nome/id que o cliente diga ser.
+//
+// Queda do WebSocket NÃO derruba a sala: o vídeo é P2P e continua passando.
+// Quem cai tem GRACE_MS pra voltar (host-resume / viewer-resume) antes da
+// sala ou do espectador serem encerrados. Só `leave` encerra na hora.
 
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
@@ -16,9 +20,19 @@ const MAX_VIEWERS = 50;
 const MAX_NAME = 24;
 const MAX_CHAT = 300;
 const HEARTBEAT_MS = 30000;
+const GRACE_MS = 45000;
+const ROOM_RE = /^[0-9A-F]{6}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// rooms: Map<roomCode, { host: ws, hostUserId, viewers: Map<viewerId, ws> }>
+// rooms: Map<roomCode, {
+//   host: ws | null, hostUserId, hostName, hostUsername, hostTimer,
+//   viewers: Map<viewerId, { ws: ws | null, name, username, timer }>
+// }>
 const rooms = new Map();
+
+export function isRoomOpen(code) {
+  return rooms.has(String(code ?? '').toUpperCase());
+}
 
 function makeRoomCode() {
   let code;
@@ -32,13 +46,24 @@ function clean(str, max) {
 
 function broadcast(room, msg) {
   hub.send(room.host, msg);
-  for (const v of room.viewers.values()) hub.send(v, msg);
+  for (const v of room.viewers.values()) hub.send(v.ws, msg);
 }
 
 function roomUsers(room) {
-  const list = [{ name: room.host.name, username: room.host.user?.username ?? null, role: 'host' }];
-  for (const v of room.viewers.values()) list.push({ name: v.name, username: v.user?.username ?? null, role: 'viewer' });
+  const list = [{ name: room.hostName, username: room.hostUsername, role: 'host' }];
+  for (const v of room.viewers.values()) list.push({ name: v.name, username: v.username, role: 'viewer' });
   return list;
+}
+
+function roomLinks(code, user) {
+  return { room: `/s/${code}`, profile: user?.username ? `/@${user.username}` : null };
+}
+
+function newRoom(ws) {
+  return {
+    host: null, hostUserId: ws.user.id, hostName: ws.name, hostUsername: ws.user.username ?? null,
+    hostTimer: null, viewers: new Map(),
+  };
 }
 
 function originAllowed(req) {
@@ -69,11 +94,13 @@ export function attachSignaling(httpServer) {
     ws.roomCode = null;
     ws.viewerId = null;
     ws.social = false;
+    ws.left = false;
     ws.name = ws.user?.name || 'Anônimo';
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', (raw) => {
+      ws.isAlive = true;
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
       handle(ws, msg).catch((err) => console.error('ws:', err.message));
@@ -94,10 +121,41 @@ export function attachSignaling(httpServer) {
   return wss;
 }
 
+/* ── ciclo de vida da sala ───────────────────────────────────── */
+
+function endRoom(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  clearTimeout(room.hostTimer);
+  for (const v of room.viewers.values()) {
+    clearTimeout(v.timer);
+    hub.send(v.ws, { type: 'host-left' });
+  }
+  rooms.delete(code);
+  hub.endLive(room.hostUserId).catch((err) => console.error('endLive:', err.message));
+}
+
+function removeViewer(room, viewerId) {
+  const v = room.viewers.get(viewerId);
+  if (!v) return;
+  clearTimeout(v.timer);
+  room.viewers.delete(viewerId);
+  hub.send(room.host, { type: 'viewer-left', viewerId, name: v.name });
+  broadcast(room, { type: 'room-users', users: roomUsers(room) });
+}
+
+// Conexão nova assume o lugar da antiga (aba que reconectou antes do
+// servidor perceber que a velha morreu).
+function replaceSocket(old, ws) {
+  if (old && old !== ws) {
+    old.role = null; // o close atrasado da antiga não mexe mais na sala
+    old.terminate();
+  }
+}
+
 async function handle(ws, msg) {
   switch (msg.type) {
     case 'ping':
-      ws.isAlive = true;
       hub.send(ws, { type: 'pong' });
       break;
 
@@ -116,23 +174,64 @@ async function handle(ws, msg) {
     case 'host-create-room': {
       if (ws.role) return;
       if (!ws.user) { hub.send(ws, { type: 'error', message: 'Entre na sua conta pra transmitir.' }); return; }
-      if (hub.liveRoomOf(ws.user.id)) {
-        hub.send(ws, { type: 'error', message: 'Você já está transmitindo em outra aba.' });
-        return;
+      const current = hub.liveRoomOf(ws.user.id);
+      if (current) {
+        if (rooms.get(current)?.host) {
+          hub.send(ws, { type: 'error', message: 'Você já está transmitindo em outra aba.' });
+          return;
+        }
+        // Sala antiga sem host (aba fechada, esperando reconexão): encerra.
+        endRoom(current);
       }
       const roomCode = makeRoomCode();
-      rooms.set(roomCode, { host: ws, hostUserId: ws.user.id, viewers: new Map() });
+      const room = newRoom(ws);
+      room.host = ws;
+      rooms.set(roomCode, room);
       ws.role = 'host';
       ws.roomCode = roomCode;
-      hub.send(ws, {
-        type: 'room-created',
-        roomCode,
-        links: {
-          room: `/s/${roomCode}`,
-          profile: ws.user.username ? `/@${ws.user.username}` : null,
-        },
-      });
+      hub.send(ws, { type: 'room-created', roomCode, links: roomLinks(roomCode, ws.user) });
       await hub.goLive(ws.user, roomCode, msg.source === 'camera' ? 'camera' : 'screen');
+      break;
+    }
+
+    // Host voltou depois de uma queda (rede, celular, redeploy do servidor).
+    case 'host-resume': {
+      if (ws.role) return;
+      if (!ws.user) { hub.send(ws, { type: 'error', message: 'Sua sessão expirou. Entre de novo.' }); return; }
+      const code = clean(msg.roomCode, 6).toUpperCase();
+      if (!ROOM_RE.test(code)) return;
+      let room = rooms.get(code);
+
+      if (room && room.hostUserId !== ws.user.id) {
+        hub.send(ws, { type: 'error', message: 'Essa sala é de outra pessoa.' });
+        return;
+      }
+      if (!room) {
+        // Servidor reiniciou e a sala (que mora em memória) sumiu: recria com
+        // o mesmo código, pra quem já estava assistindo conseguir voltar.
+        const other = hub.liveRoomOf(ws.user.id);
+        if (other && other !== code) {
+          hub.send(ws, { type: 'error', message: 'Você já está transmitindo em outra aba.' });
+          return;
+        }
+        room = newRoom(ws);
+        rooms.set(code, room);
+        await hub.goLive(ws.user, code, msg.source === 'camera' ? 'camera' : 'screen', { silent: true });
+      }
+
+      clearTimeout(room.hostTimer);
+      room.hostTimer = null;
+      replaceSocket(room.host, ws);
+      room.host = ws;
+      ws.role = 'host';
+      ws.roomCode = code;
+      hub.send(ws, {
+        type: 'room-resumed',
+        roomCode: code,
+        links: roomLinks(code, ws.user),
+        viewers: [...room.viewers].map(([viewerId, v]) => ({ viewerId, name: v.name, username: v.username })),
+      });
+      broadcast(room, { type: 'room-users', users: roomUsers(room) });
       break;
     }
 
@@ -140,23 +239,69 @@ async function handle(ws, msg) {
       if (ws.role) return;
       const code = clean(msg.roomCode, 6).toUpperCase();
       const room = rooms.get(code);
-      if (!room || !room.host) { hub.send(ws, { type: 'error', message: 'Sala não encontrada ou host offline.' }); return; }
+      if (!room) { hub.send(ws, { type: 'error', message: 'Sala não encontrada ou host offline.' }); return; }
       if (room.viewers.size >= MAX_VIEWERS) { hub.send(ws, { type: 'error', message: 'Essa sala já está lotada.' }); return; }
       const viewerId = crypto.randomUUID();
       ws.role = 'viewer';
       ws.roomCode = code;
       ws.viewerId = viewerId;
       if (!ws.user) ws.name = clean(msg.name, MAX_NAME) || 'Anônimo';
-      room.viewers.set(viewerId, ws);
+      room.viewers.set(viewerId, { ws, name: ws.name, username: ws.user?.username ?? null, timer: null });
+      // Se o host estiver reconectando, ele recebe este espectador na lista do room-resumed.
       hub.send(room.host, { type: 'viewer-joined', viewerId, name: ws.name, username: ws.user?.username ?? null });
-      hub.send(ws, { type: 'joined', viewerId, host: { name: room.host.name, username: room.host.user?.username } });
+      hub.send(ws, { type: 'joined', viewerId, host: { name: room.hostName, username: room.hostUsername } });
       broadcast(room, { type: 'room-users', users: roomUsers(room) });
+      break;
+    }
+
+    // Espectador voltou depois de uma queda. A conexão P2P provavelmente
+    // continua de pé; o host decide se precisa renegociar.
+    case 'viewer-resume': {
+      if (ws.role) return;
+      const code = clean(msg.roomCode, 6).toUpperCase();
+      const viewerId = clean(msg.viewerId, 36);
+      if (!UUID_RE.test(viewerId)) return;
+      const room = rooms.get(code);
+      // Sala ainda não voltou (servidor reiniciando, host reconectando): tenta de novo.
+      if (!room) { hub.send(ws, { type: 'resume-failed', retry: true }); return; }
+
+      let v = room.viewers.get(viewerId);
+      if (!v) {
+        if (room.viewers.size >= MAX_VIEWERS) { hub.send(ws, { type: 'resume-failed', retry: false }); return; }
+        if (!ws.user) ws.name = clean(msg.name, MAX_NAME) || 'Anônimo';
+        v = { ws: null, name: ws.name, username: ws.user?.username ?? null, timer: null };
+        room.viewers.set(viewerId, v);
+      }
+      clearTimeout(v.timer);
+      v.timer = null;
+      replaceSocket(v.ws, ws);
+      v.ws = ws;
+      ws.name = v.name;
+      ws.role = 'viewer';
+      ws.roomCode = code;
+      ws.viewerId = viewerId;
+      hub.send(ws, { type: 'joined', viewerId, resumed: true, host: { name: room.hostName, username: room.hostUsername } });
+      hub.send(room.host, { type: 'viewer-resumed', viewerId, name: v.name, username: v.username });
+      broadcast(room, { type: 'room-users', users: roomUsers(room) });
+      break;
+    }
+
+    // Saída de propósito: encerra na hora, sem período de tolerância.
+    case 'leave': {
+      const room = rooms.get(ws.roomCode);
+      ws.left = true;
+      if (room) {
+        if (ws.role === 'host' && room.host === ws) endRoom(ws.roomCode);
+        else if (ws.role === 'viewer' && room.viewers.get(ws.viewerId)?.ws === ws) removeViewer(room, ws.viewerId);
+      }
+      ws.role = null;
       break;
     }
 
     case 'offer': {
       if (ws.role !== 'host') return;
-      hub.send(rooms.get(ws.roomCode)?.viewers.get(msg.viewerId), { type: 'offer', sdp: msg.sdp, viewerId: msg.viewerId });
+      // fresh: conexão nova (o espectador descarta a antiga); senão é ICE restart.
+      hub.send(rooms.get(ws.roomCode)?.viewers.get(msg.viewerId)?.ws, { type: 'offer', sdp: msg.sdp, viewerId: msg.viewerId, fresh: !!msg.fresh });
       break;
     }
 
@@ -166,10 +311,17 @@ async function handle(ws, msg) {
       break;
     }
 
+    // Espectador percebeu a mídia caindo: pede pro host renegociar o ICE.
+    case 'restart-ice': {
+      if (ws.role !== 'viewer') return;
+      hub.send(rooms.get(ws.roomCode)?.host, { type: 'restart-ice', viewerId: ws.viewerId });
+      break;
+    }
+
     case 'ice-candidate': {
       const room = rooms.get(ws.roomCode);
       if (!room) return;
-      if (ws.role === 'host') hub.send(room.viewers.get(msg.viewerId), { type: 'ice-candidate', candidate: msg.candidate });
+      if (ws.role === 'host') hub.send(room.viewers.get(msg.viewerId)?.ws, { type: 'ice-candidate', candidate: msg.candidate });
       else if (ws.role === 'viewer') hub.send(room.host, { type: 'ice-candidate', candidate: msg.candidate, viewerId: ws.viewerId });
       break;
     }
@@ -217,15 +369,21 @@ async function handle(ws, msg) {
 
 function onClose(ws) {
   const room = rooms.get(ws.roomCode);
-  if (room) {
-    if (ws.role === 'host') {
-      for (const v of room.viewers.values()) hub.send(v, { type: 'host-left' });
-      rooms.delete(ws.roomCode);
-      hub.endLive(room.hostUserId).catch((err) => console.error('endLive:', err.message));
+  if (room && !ws.left) {
+    if (ws.role === 'host' && room.host === ws) {
+      // Não avisa os espectadores: o vídeo P2P segue enquanto o host volta.
+      const code = ws.roomCode;
+      room.host = null;
+      clearTimeout(room.hostTimer);
+      room.hostTimer = setTimeout(() => endRoom(code), GRACE_MS);
     } else if (ws.role === 'viewer') {
-      room.viewers.delete(ws.viewerId);
-      hub.send(room.host, { type: 'viewer-left', viewerId: ws.viewerId, name: ws.name });
-      broadcast(room, { type: 'room-users', users: roomUsers(room) });
+      const v = room.viewers.get(ws.viewerId);
+      if (v?.ws === ws) {
+        const id = ws.viewerId;
+        v.ws = null;
+        clearTimeout(v.timer);
+        v.timer = setTimeout(() => removeViewer(room, id), GRACE_MS);
+      }
     }
   }
   if (ws.social && ws.user) hub.removeSocial(ws.user.id, ws);
