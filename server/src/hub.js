@@ -72,7 +72,8 @@ export function friendsChanged(...userIds) {
 
 /* ── ao vivo ────────────────────────────────────────────────── */
 
-export async function goLive(user, roomCode, source) {
+// `silent`: sala recriada depois de queda/redeploy — não avisa os amigos de novo.
+export async function goLive(user, roomCode, source, { silent = false } = {}) {
   live.set(user.id, { roomCode, name: user.name, username: user.username });
 
   // Encerra qualquer transmissão "pendurada" antes de abrir a nova.
@@ -84,8 +85,9 @@ export async function goLive(user, roomCode, source) {
   const who = { userId: user.id, name: user.name, username: user.username };
   for (const id of ids) {
     sendToUser(id, { type: 'presence', userId: user.id, status: 'live' });
-    sendToUser(id, { type: 'friend-went-live', ...who });
+    if (!silent) sendToUser(id, { type: 'friend-went-live', ...who });
   }
+  if (silent) return;
   // App fechado: Web Push. O link /@username resolve o resto.
   await sendToUsers(ids, {
     title: `${user.name} está ao vivo no Blink`,

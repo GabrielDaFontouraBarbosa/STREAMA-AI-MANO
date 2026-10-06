@@ -8,13 +8,15 @@
  * Suba o CACHE ao mudar a lista de arquivos do shell.
  */
 
-const CACHE = 'blink-v1';
+const CACHE = 'blink-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './icon.svg',
+  './mark.svg',
+  './mark-detail.svg',
   './manifest.webmanifest',
 ];
 

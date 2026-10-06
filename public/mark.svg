@@ -1,20 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Blink">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="158 50 364 364">
+  <title>Blink</title>
   <defs>
     <mask id="corte" maskUnits="userSpaceOnUse" x="158" y="50" width="364" height="364">
       <rect x="158" y="50" width="364" height="364" fill="white"/>
       <circle cx="340" cy="232" r="166" fill="none" stroke="black" stroke-width="9"/>
       <g transform="rotate(-45 340 232) translate(340 232) scale(0.85) translate(-340 -232)">
         <path d="M340 70 L358 110 L356 265 L324 265 L322 110 Z" fill="black"/>
+        <line x1="340" y1="102" x2="340" y2="252" stroke="white" stroke-width="3" stroke-linecap="round"/>
         <path d="M280 265 L400 265 L412 275 L400 285 L280 285 L268 275 Z" fill="black"/>
         <circle cx="266" cy="275" r="10" fill="black"/>
         <circle cx="414" cy="275" r="10" fill="black"/>
+        <path d="M340 268 L347 275 L340 282 L333 275 Z" fill="white"/>
         <path d="M328 285 L352 285 L348 365 L332 365 Z" fill="black"/>
         <path d="M340 363 L356 380 L340 397 L324 380 Z" fill="black"/>
       </g>
     </mask>
   </defs>
-  <rect width="512" height="512" rx="112" fill="#090F11"/>
-  <svg x="76" y="76" width="360" height="360" viewBox="158 50 364 364">
-    <circle cx="340" cy="232" r="182" fill="#1ba3b3" mask="url(#corte)"/>
-  </svg>
+  <circle cx="340" cy="232" r="182" fill="#1ba3b3" mask="url(#corte)"/>
 </svg>

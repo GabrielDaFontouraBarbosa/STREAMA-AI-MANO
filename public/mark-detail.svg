@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="158 50 364 364" width="512" height="512">
+  <title>Adaga de cristal</title>
+  <defs>
+    <mask id="corte" maskUnits="userSpaceOnUse" x="158" y="50" width="364" height="364">
+      <rect x="158" y="50" width="364" height="364" fill="white"/>
+      <circle cx="340" cy="232" r="166" fill="none" stroke="black" stroke-width="4"/>
+      <circle cx="340" cy="232" r="152" fill="none" stroke="black" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round"/>
+      <g fill="black">
+        <path d="M430 128 L456 152 L434 170 Z"/>
+        <path d="M398 110 L408 104 L405 120 Z"/>
+        <path d="M462 192 L476 210 L458 218 L455 204 Z"/>
+        <path d="M424 170 L433 176 L423 181 Z"/>
+        <path d="M372 104 L380 100 L378 112 Z"/>
+        <path d="M226 262 L248 252 L244 278 Z"/>
+        <path d="M262 318 L296 330 L270 356 Z"/>
+        <path d="M236 316 L244 322 L234 326 Z"/>
+        <path d="M300 358 L314 352 L310 368 Z"/>
+      </g>
+      <g transform="rotate(-45 340 232) translate(340 232) scale(0.85) translate(-340 -232)">
+        <path d="M340 70 L358 110 L356 265 L324 265 L322 110 Z" fill="black"/>
+        <line x1="340" y1="102" x2="340" y2="252" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <path d="M280 265 L400 265 L412 275 L400 285 L280 285 L268 275 Z" fill="black"/>
+        <circle cx="266" cy="275" r="10" fill="black"/>
+        <circle cx="414" cy="275" r="10" fill="black"/>
+        <path d="M340 268 L347 275 L340 282 L333 275 Z" fill="white"/>
+        <path d="M328 285 L352 285 L348 365 L332 365 Z" fill="black"/>
+        <path d="M340 363 L356 380 L340 397 L324 380 Z" fill="black"/>
+      </g>
+    </mask>
+  </defs>
+  <circle cx="340" cy="232" r="182" fill="#1ba3b3" mask="url(#corte)"/>
+</svg>
