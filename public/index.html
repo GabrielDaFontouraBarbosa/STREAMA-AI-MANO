@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Blink — sua tela ao vivo em um piscar de olhos</title>
-  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo via WebRTC. Peer-to-peer, sem cadastro, sem instalar nada." />
+  <title>Blink — sua tela ao vivo, direto do navegador</title>
+  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo com a galera via WebRTC. Peer-to-peer, sem instalar nada." />
 
   <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
@@ -17,13 +17,13 @@
   <meta name="apple-mobile-web-app-title" content="Blink" />
 
   <meta property="og:title" content="Blink" />
-  <meta property="og:description" content="Sua tela ao vivo, sem instalar nada. WebRTC direto do navegador." />
+  <meta property="og:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Blink" />
   <meta property="og:image" content="icon-512.png" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Blink" />
-  <meta name="twitter:description" content="Sua tela ao vivo, sem instalar nada. WebRTC direto do navegador." />
+  <meta name="twitter:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
   <meta name="twitter:image" content="icon-512.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -64,11 +64,14 @@
 <header class="topbar">
   <a class="brand" href="#top">
     <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="brand-name">Blink</span>
+    <span class="brand-name">Blink<span class="brand-dim">.</span></span>
   </a>
   <div class="topbar-right">
     <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label">offline</span></span>
     <button id="install-btn" class="btn btn-quiet" hidden><svg class="ic"><use href="#i-download"/></svg>Instalar</button>
+    <span id="me-chip" class="pill me-chip" hidden><span class="avatar" id="me-avatar"></span><span id="me-name"></span></span>
+    <button id="login-btn" class="btn btn-quiet" hidden>Entrar</button>
+    <button id="logout-btn" class="btn btn-quiet" hidden>Sair</button>
     <button id="theme-btn" class="iconbtn" aria-label="Alternar tema"><svg class="ic"><use href="#i-sun"/></svg></button>
   </div>
 </header>
@@ -80,7 +83,7 @@
     <div class="hero-inner">
       <p class="eyebrow reveal"><span class="tick"></span>WebRTC · ponto a ponto · sem instalar nada</p>
       <h1 class="reveal">Sua tela,<br><em>ao vivo</em>, pra geral.</h1>
-      <p class="lede reveal">Abre uma sala, manda o código pros amigos, pronto. O vídeo sai do seu navegador direto pro deles — sem passar por servidor, sem cadastro, sem app.</p>
+      <p class="lede reveal">Abre uma sala, manda o link pros amigos, pronto. O vídeo sai do seu navegador direto pro deles — sem passar por servidor, sem instalar app.</p>
       <div class="hero-cta reveal">
         <a href="#console" class="btn btn-primary btn-lg">Começar a transmitir</a>
         <a href="#como" class="btn btn-quiet btn-lg">Como funciona</a>
@@ -120,7 +123,7 @@
       <section id="pane-host" class="pane active" role="tabpanel" aria-labelledby="tab-host" tabindex="0">
 
         <div id="host-setup">
-          <div class="field">
+          <div class="field" id="host-name-field">
             <label for="host-name">Seu nome</label>
             <input id="host-name" placeholder="Como a galera vai te ver" maxlength="24" autocomplete="nickname" />
           </div>
@@ -159,6 +162,7 @@
             <div class="codebox-actions">
               <button id="copy-code" class="btn btn-quiet"><svg class="ic"><use href="#i-copy"/></svg>Copiar código</button>
               <button id="copy-link" class="btn btn-quiet"><svg class="ic"><use href="#i-share"/></svg>Copiar convite</button>
+              <button id="copy-profile" class="btn btn-quiet" hidden><svg class="ic"><use href="#i-users"/></svg>Link pros amigos</button>
             </div>
           </div>
 
@@ -182,7 +186,7 @@
       <section id="pane-viewer" class="pane" role="tabpanel" aria-labelledby="tab-viewer" tabindex="0">
 
         <div id="viewer-setup">
-          <div class="field">
+          <div class="field" id="viewer-name-field">
             <label for="viewer-name">Seu nome</label>
             <input id="viewer-name" placeholder="Como o pessoal vai te ver" maxlength="24" autocomplete="nickname" />
           </div>
@@ -217,37 +221,45 @@
       <!-- ── AMIGOS ────────────────────────────────────── -->
       <section id="pane-friends" class="pane" role="tabpanel" aria-labelledby="tab-friends" tabindex="0">
 
-        <div class="myid-box frame">
-          <div class="myid-label"><svg class="ic"><use href="#i-key"/></svg>Seu código de amigo</div>
-          <div class="myid-row">
-            <input id="my-id" class="mono myid-value" readonly />
-            <button id="my-id-copy" class="btn btn-quiet"><svg class="ic"><use href="#i-copy"/></svg>Copiar</button>
-          </div>
-          <p class="myid-hint">Manda esse código pros seus amigos pra eles te adicionarem. Ninguém acha sua sala sem ele.</p>
+        <div id="friends-guest" class="guest-box frame" hidden>
+          <p>Crie uma conta pra adicionar amigos, ver quem está ao vivo e receber aviso quando alguém começar a transmitir.</p>
+          <button class="btn btn-primary btn-block" data-open-auth>Entrar ou criar conta</button>
         </div>
 
-        <div class="field">
-          <label for="friends-name">Seu nome (visível pros amigos)</label>
-          <input id="friends-name" placeholder="Como te reconhecerem" maxlength="24" autocomplete="nickname" />
-        </div>
-
-        <div class="add-friend">
-          <div class="field">
-            <label for="friend-add-id">Código do amigo</label>
-            <input id="friend-add-id" class="mono" placeholder="A1B2C3D4" maxlength="8" spellcheck="false" autocapitalize="characters" />
+        <div id="friends-app">
+          <div class="myid-box frame">
+            <div class="myid-label"><svg class="ic"><use href="#i-key"/></svg>Seu link</div>
+            <div class="myid-row">
+              <input id="my-link" class="mono myid-value myid-link" readonly />
+              <button id="my-link-copy" class="btn btn-quiet"><svg class="ic"><use href="#i-copy"/></svg>Copiar</button>
+            </div>
+            <p class="myid-hint">Seus amigos te acham pelo <b id="my-username" class="mono"></b>. Quando você estiver ao vivo, esse link pede pra entrar na sua sala — você decide quem entra.</p>
           </div>
-          <div class="field">
-            <label for="friend-add-name">Apelido (opcional)</label>
-            <input id="friend-add-name" placeholder="Pra você lembrar quem é" maxlength="24" />
-          </div>
-          <button id="friend-add-btn" class="btn btn-primary btn-block">
-            <svg class="ic"><use href="#i-users"/></svg>Adicionar amigo
-          </button>
-        </div>
 
-        <div class="friends">
-          <div class="viewers-head"><span>Seus amigos</span><span id="friend-n" class="count">0</span></div>
-          <ul id="friend-list" class="friend-list"><li class="empty">Nenhum amigo ainda. Compartilhe seu código!</li></ul>
+          <div class="push-row">
+            <span>Avisar quando um amigo entrar ao vivo, mesmo com o Blink fechado</span>
+            <button id="push-btn" class="btn btn-quiet btn-sm">Ativar avisos</button>
+          </div>
+
+          <form id="friend-add" class="add-friend">
+            <div class="field">
+              <label for="friend-add-username">Adicionar por usuário</label>
+              <input id="friend-add-username" class="mono" placeholder="@usuario" maxlength="21" spellcheck="false" autocapitalize="none" autocomplete="off" />
+            </div>
+            <button id="friend-add-btn" class="btn btn-primary btn-block">
+              <svg class="ic"><use href="#i-users"/></svg>Mandar pedido de amizade
+            </button>
+          </form>
+
+          <div id="requests" class="friends" hidden>
+            <div class="viewers-head"><span>Pedidos</span><span id="request-n" class="count">0</span></div>
+            <ul id="request-list" class="friend-list"></ul>
+          </div>
+
+          <div class="friends">
+            <div class="viewers-head"><span>Seus amigos</span><span id="friend-n" class="count">0</span></div>
+            <ul id="friend-list" class="friend-list"><li class="empty">Nenhum amigo ainda. Manda seu link!</li></ul>
+          </div>
         </div>
       </section>
 
@@ -279,7 +291,7 @@
       <article class="card frame reveal">
         <svg class="ic ic-lg"><use href="#i-bolt"/></svg>
         <h3>Zero instalação</h3>
-        <p>Abre o link, clica, transmite. Funciona em qualquer navegador moderno, no computador ou no celular, sem plugin nem cadastro.</p>
+        <p>Abre o link, clica, transmite. Funciona em qualquer navegador moderno, no computador ou no celular, sem plugin.</p>
       </article>
       <article class="card frame reveal">
         <svg class="ic ic-lg"><use href="#i-download"/></svg>
@@ -298,10 +310,59 @@
 
 <footer class="foot">
   <div class="bars sm" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  <p class="mono dim">Blink — compartilhe sua tela em um piscar de olhos.</p>
+  <p class="mono dim">Blink — WebRTC + WebSocket, e mais nada.</p>
 </footer>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+<dialog id="auth" class="auth frame" aria-labelledby="auth-title">
+  <div class="bars sm" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="auth-inner">
+    <h2 id="auth-title">Entra no <em>Blink</em></h2>
+    <p class="auth-sub">Sua conta fica lembrada neste navegador.</p>
+
+    <div class="segmented auth-tabs" data-group="auth">
+      <button type="button" class="seg active" data-auth="login">Entrar</button>
+      <button type="button" class="seg" data-auth="signup">Criar conta</button>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <div class="field">
+        <label for="login-id">Email ou usuário</label>
+        <input id="login-id" autocomplete="username" required spellcheck="false" autocapitalize="none" />
+      </div>
+      <div class="field">
+        <label for="login-pass">Senha</label>
+        <input id="login-pass" type="password" autocomplete="current-password" required minlength="8" />
+      </div>
+      <button class="btn btn-primary btn-block btn-lg">Entrar</button>
+    </form>
+
+    <form id="signup-form" class="auth-form" hidden>
+      <div class="field">
+        <label for="su-name">Nome</label>
+        <input id="su-name" maxlength="24" autocomplete="nickname" required placeholder="Como a galera vai te ver" />
+      </div>
+      <div class="field">
+        <label for="su-username">Usuário</label>
+        <input id="su-username" class="mono" maxlength="20" required pattern="[A-Za-z0-9_]{3,20}" autocapitalize="none" spellcheck="false" placeholder="gabriel" />
+        <p class="field-hint">3–20 letras, números ou _. Vira seu link: <span class="mono" id="su-preview">/@…</span></p>
+      </div>
+      <div class="field">
+        <label for="su-email">Email</label>
+        <input id="su-email" type="email" autocomplete="email" required />
+      </div>
+      <div class="field">
+        <label for="su-pass">Senha</label>
+        <input id="su-pass" type="password" autocomplete="new-password" required minlength="8" placeholder="mín. 8 caracteres" />
+      </div>
+      <button class="btn btn-primary btn-block btn-lg">Criar conta</button>
+    </form>
+
+    <p id="auth-error" class="auth-error" role="alert" hidden></p>
+    <button type="button" id="auth-guest" class="auth-guest">Só assistir com um código, sem conta</button>
+  </div>
+</dialog>
 
 <script src="app.js" type="module"></script>
 </body>
