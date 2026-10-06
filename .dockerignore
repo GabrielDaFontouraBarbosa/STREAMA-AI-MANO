@@ -20,8 +20,3 @@ build
 # Documentação
 README.md
 RAILWAY_DEPLOY.md
-
-# Sobras do protótipo e variações de .env
-.env.*
-host-app
-viewer

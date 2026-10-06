@@ -1,11 +1,10 @@
 {
   "name": "blink",
   "version": "1.0.0",
-  "description": "Blink — sua tela ao vivo, direto do navegador (WebRTC)",
+  "description": "Web app for screen sharing via WebRTC",
   "private": true,
   "scripts": {
-    "start": "cd server && npm start",
-    "dev": "cd server && npm run dev",
-    "install-server": "cd server && npm install"
+    "install-server": "cd server && npm install",
+    "start": "cd server && npm start"
   }
 }
