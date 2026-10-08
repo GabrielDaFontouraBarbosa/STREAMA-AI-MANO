@@ -27,6 +27,13 @@ export const config = {
     privateKey: env.VAPID_PRIVATE_KEY,
     subject: env.VAPID_SUBJECT || 'mailto:contato@blink.app',
   },
+
+  // Bot do Discord — discord.com/developers/applications → Bot → Reset Token
+  discord: {
+    token: env.DISCORD_BOT_TOKEN,
+    channelId: env.DISCORD_CHANNEL_ID, // canal dos avisos "fulano está ao vivo"
+    guildId: env.DISCORD_GUILD_ID,     // opcional: registra os comandos na hora nesse servidor
+  },
 };
 
 if (!config.authSecret) {

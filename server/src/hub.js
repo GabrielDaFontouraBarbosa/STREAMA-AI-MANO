@@ -6,6 +6,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db, schema } from './db/index.js';
 import { friendIds } from './friends.js';
 import { sendToUsers } from './push.js';
+import { announceLive, announceEnded } from './discord.js';
 
 // userId → Set<ws>  (só as conexões sociais — a aba aberta)
 const online = new Map();
@@ -32,6 +33,11 @@ export function isOnline(userId) {
 
 export function liveRoomOf(userId) {
   return live.get(userId)?.roomCode ?? null;
+}
+
+// Quem está ao vivo agora (pro /aovivo do Discord) — sem o código da sala.
+export function liveNow() {
+  return [...live.values()].map(({ name, username }) => ({ name, username }));
 }
 
 async function broadcastPresence(userId) {
@@ -92,6 +98,7 @@ export async function goLive(user, roomCode, source, { silent = false } = {}) {
     if (!silent) sendToUser(id, { type: 'friend-went-live', ...who });
   }
   if (silent) return;
+  safe(announceLive(user, source));
   // App fechado: Web Push. O link /@username resolve o resto.
   await sendToUsers(ids, {
     title: `${user.name} está ao vivo no Blink`,
@@ -103,6 +110,7 @@ export async function goLive(user, roomCode, source, { silent = false } = {}) {
 
 export async function endLive(userId) {
   if (!live.delete(userId)) return;
+  safe(announceEnded(userId));
   await db.update(schema.liveStreams).set({ endedAt: new Date() })
     .where(and(eq(schema.liveStreams.userId, userId), isNull(schema.liveStreams.endedAt)));
   await broadcastPresence(userId);
