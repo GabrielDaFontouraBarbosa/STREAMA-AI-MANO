@@ -1,0 +1,51 @@
+# Blink rodando no seu PC (precisa do Docker Desktop aberto).
+#
+#   db      Postgres (dados num volume — não somem ao desligar)
+#   app     site + bot do Discord, em http://localhost:8080
+#   tunnel  endereço https público grátis pros amigos (Cloudflare)
+#
+# Ligar:     docker compose up -d --build
+# Endereço:  docker compose logs tunnel   (procure .trycloudflare.com)
+# Desligar:  docker compose down
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blink
+      POSTGRES_PASSWORD: blink
+      POSTGRES_DB: blink
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blink -d blink"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ../..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://blink:blink@db:5432/blink
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # O endereço muda toda vez que ESTE container reinicia. Reiniciar só o
+  # app (docker compose restart app) mantém o mesmo endereço.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://app:8080
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
