@@ -82,7 +82,7 @@ cd ~/blink/deploy/oracle && sudo docker compose logs app | grep -A1 "Bot do Disc
 | mudar o token / variáveis | `nano .env` e depois `sudo docker compose up -d app` |
 | backup do banco | `sudo docker compose exec db pg_dump -U blink blink > backup.sql` |
 
-Desliga e liga sozinho: se a VM reiniciar, os containers voltam sozinhos.
+Se a VM reiniciar, os containers voltam sozinhos.
 
 ## Trazer os dados do Railway (opcional)
 
