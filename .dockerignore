@@ -25,3 +25,7 @@ RAILWAY_DEPLOY.md
 .env.*
 host-app
 viewer
+
+# Deploy (o .env da VM tem segredos — nunca entra na imagem)
+deploy
+**/.env

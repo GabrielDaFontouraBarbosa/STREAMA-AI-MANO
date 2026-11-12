@@ -80,6 +80,10 @@ npm run bot      # precisa de DATABASE_URL, DISCORD_TOKEN e PUBLIC_URL no .env
 Rodando no PC contra o banco do Railway: use a URL **pública** do Postgres
 (`DATABASE_PUBLIC_URL`, com `PGSSL=1`) e `PUBLIC_URL` apontando pro site no ar.
 
+## Deploy grátis na Oracle Cloud
+
+Veja **[ORACLE_DEPLOY.md](ORACLE_DEPLOY.md)** — site, banco e bot numa VM Always Free.
+
 ## Deploy no Railway
 
 1. No projeto, **+ New → Database → PostgreSQL**.

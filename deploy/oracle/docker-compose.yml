@@ -1,0 +1,56 @@
+# Blink inteiro numa VM só (Oracle Cloud Always Free):
+#   db     Postgres (dados num volume — sobrevivem a rebuild/restart)
+#   app    site + API + WebSocket + bot do Discord (se DISCORD_TOKEN no .env)
+#   caddy  HTTPS automático (Let's Encrypt) na frente do app
+#
+# Tudo é configurado pelo .env desta pasta (o setup.sh cria).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blink
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?rode o setup.sh pra criar o .env}
+      POSTGRES_DB: blink
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blink -d blink"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ../..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgres://blink:${POSTGRES_PASSWORD}@db:5432/blink
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?rode o setup.sh pra criar o .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,6 @@
+# Certificado HTTPS automático pro domínio do .env (ex.: 129-1-2-3.sslip.io).
+# WebSocket passa direto — não precisa de nada a mais.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8080
+}
