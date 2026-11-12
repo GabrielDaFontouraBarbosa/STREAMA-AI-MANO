@@ -1,0 +1,50 @@
+# Blink no seu PC, de graça: app + Postgres + túnel da Cloudflare.
+#   docker compose up -d --build
+#   docker compose logs app        (mostra o link https://...trycloudflare.com)
+# Veja RODAR_NO_PC.md.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blink
+      POSTGRES_PASSWORD: blink   # só acessível dentro da rede do compose
+      POSTGRES_DB: blink
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blink -d blink"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    command: ["node", "server/tunnel-boot.js"]
+    env_file:
+      - path: .env       # opcional: TURN da Cloudflare, VAPID etc.
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://blink:blink@db:5432/blink
+      TUNNEL_METRICS_URL: http://tunnel:2000
+    volumes:
+      - appdata:/app/data
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      tunnel:
+        condition: service_started
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://app:8080
+
+volumes:
+  pgdata:
+  appdata:

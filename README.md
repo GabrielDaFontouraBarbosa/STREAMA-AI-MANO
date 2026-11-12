@@ -36,6 +36,10 @@ server/
 public/               a página (index.html, app.js, styles.css, sw.js)
 ```
 
+## Rodar no seu PC, de graça (com link público)
+
+Veja **[RODAR_NO_PC.md](RODAR_NO_PC.md)**: Docker Compose sobe app + Postgres + túnel da Cloudflare e mostra o link.
+
 ## Rodar local
 
 Precisa de Node 22+ e um Postgres.

@@ -25,3 +25,6 @@ RAILWAY_DEPLOY.md
 .env.*
 host-app
 viewer
+RODAR_NO_PC.md
+docker-compose.yml
+*.bat
