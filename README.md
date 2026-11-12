@@ -55,6 +55,31 @@ npm run db:generate           # cria server/drizzle/XXXX_*.sql
 npm run db:studio             # (opcional) navegar no banco
 ```
 
+## Bot do Discord
+
+Avisa num canal do seu servidor quando alguém abre live, marcando a pessoa
+(e, se quiser, um cargo). Cada um liga a própria conta com `/vincular`.
+
+| Comando | Quem | O que faz |
+|---|---|---|
+| `/vincular` | qualquer um | manda (só pra você) um link que liga seu Discord à conta do Blink em que você está logado |
+| `/desvincular` | qualquer um | desfaz a ligação |
+| `/avisos ligar canal: [cargo:]` | admin (Gerenciar servidor) | escolhe o canal dos avisos e o cargo a marcar (pode ser @everyone) |
+| `/avisos desligar` | admin | para os avisos no servidor |
+
+O bot descobre as lives olhando a tabela `live_streams` do Postgres, então
+ele roda **junto com o site** (Railway, só pôr `DISCORD_TOKEN`) **ou sozinho
+no seu PC** (`npm run bot`) — desde que use o mesmo banco. Use um lugar só,
+senão os avisos saem em dobro.
+
+```bash
+cd server
+npm run bot      # precisa de DATABASE_URL, DISCORD_TOKEN e PUBLIC_URL no .env
+```
+
+Rodando no PC contra o banco do Railway: use a URL **pública** do Postgres
+(`DATABASE_PUBLIC_URL`, com `PGSSL=1`) e `PUBLIC_URL` apontando pro site no ar.
+
 ## Deploy no Railway
 
 1. No projeto, **+ New → Database → PostgreSQL**.

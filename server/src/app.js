@@ -12,6 +12,7 @@ import * as hub from './hub.js';
 import * as push from './push.js';
 import { getIceServers, turnConfigured } from './turn.js';
 import { isRoomOpen } from './signaling.js';
+import * as discord from './discord/links.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -141,6 +142,25 @@ export function createApp() {
     res.json({ ok: true });
   }));
 
+  /* ── Discord ───────────────────────────────────────────── */
+  app.get('/api/discord', requireAuth, wrap(async (req, res) => {
+    const link = await discord.linkOfUser(req.user.id);
+    res.json({ linked: !!link, discordId: link?.discordId ?? null });
+  }));
+
+  // Troca o código do /vincular pela ligação com a conta logada.
+  app.post('/api/discord/link', requireAuth, wrap(async (req, res) => {
+    const code = String(req.body?.code ?? '').trim().toUpperCase();
+    if (!discord.CODE_RE.test(code)) return res.status(400).json({ error: 'invalid_code' });
+    const discordId = await discord.redeemCode(req.user.id, code);
+    if (!discordId) return res.status(410).json({ error: 'expired_code' });
+    res.json({ ok: true, discordId });
+  }));
+
+  app.delete('/api/discord/link', requireAuth, wrap(async (req, res) => {
+    res.json({ ok: await discord.unlinkUser(req.user.id) });
+  }));
+
   app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
 
   /* ── versão no ar ──────────────────────────────────────── */
@@ -160,6 +180,12 @@ export function createApp() {
   app.get('/s/:code', (req, res) => {
     const code = String(req.params.code).toUpperCase();
     res.redirect(302, ROOM_RE.test(code) ? `/?sala=${code}` : '/');
+  });
+
+  // /discord/CODIGO (link do /vincular) → o front vincula depois do login.
+  app.get('/discord/:code', (req, res) => {
+    const code = String(req.params.code).toUpperCase();
+    res.redirect(302, discord.CODE_RE.test(code) ? `/?discord=${code}` : '/');
   });
 
   // /@username → se você é amigo e a pessoa está ao vivo, pede pra entrar.

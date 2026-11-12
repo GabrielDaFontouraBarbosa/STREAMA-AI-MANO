@@ -21,6 +21,14 @@ server.listen(config.port, () => {
   console.log(`⚡ Blink rodando em ${config.publicUrl} (porta ${config.port})`);
 });
 
+// Bot do Discord junto com o site — só se tiver token. Pra rodar o bot
+// separado (no seu PC), deixe DISCORD_TOKEN fora daqui e use `npm run bot`.
+if (process.env.DISCORD_TOKEN && process.env.DISCORD_BOT !== 'off') {
+  import('./src/discord/bot.js')
+    .then((m) => m.startDiscordBot())
+    .catch((err) => console.error('⚠️  Bot do Discord não subiu:', err.message));
+}
+
 // Railway manda SIGTERM no redeploy: fecha tudo com calma.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, () => {

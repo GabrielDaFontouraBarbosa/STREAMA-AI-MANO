@@ -1572,11 +1572,31 @@ const friends = (function () {
   }
 })();
 
+/* ── Link /discord/CODIGO (comando /vincular do bot) ───────── */
+
+/* O servidor redireciona pra ?discord=CODIGO. Sem conta, abre o login —
+   o reload depois de entrar mantém o ?discord= e cai aqui de novo. */
+(async function discordLink() {
+  const code = new URLSearchParams(location.search).get('discord');
+  if (!code) return;
+  if (!account.me) { account.open('login', 'Entre pra ligar seu Discord'); return; }
+  history.replaceState(null, '', location.pathname);
+  const r = await fetch('/api/discord/link', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  }).catch(() => null);
+  if (r?.ok) toast(`Discord ligado a @${account.me.username}! Suas lives vão ser avisadas lá.`, 'ok', 5000);
+  else if (r?.status === 410) toast('Esse link expirou. Manda /vincular de novo no Discord.', 'err', 6000);
+  else toast('Não consegui ligar seu Discord. Tenta de novo.', 'err');
+})();
+
 /* ── Atalhos do app instalado (?aba=host|viewer) ───────────── */
 
 (function deepLinkTab() {
   const p = new URLSearchParams(location.search);
-  if (p.get('sala') || p.get('perfil')) return; // convite manda mais que atalho
+  if (p.get('sala') || p.get('perfil') || p.get('discord')) return; // convite manda mais que atalho
   const aba = p.get('aba');
   if (aba === 'host' || aba === 'viewer' || aba === 'friends') tabs.go(aba);
 })();

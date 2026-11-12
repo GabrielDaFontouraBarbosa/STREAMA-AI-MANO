@@ -109,6 +109,30 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('push_subscriptions_user_idx').on(t.userId)]);
 
+/* ── Discord ─────────────────────────────────────────────────── */
+
+// Conta do Blink ↔ conta do Discord (uma pra uma).
+export const discordLinks = pgTable('discord_links', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  discordId: text('discord_id').notNull().unique(),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Código curto que o /vincular do bot gera; o site troca pela ligação.
+export const discordLinkCodes = pgTable('discord_link_codes', {
+  code: text('code').primaryKey(),
+  discordId: text('discord_id').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+// Onde cada servidor do Discord quer os avisos de live (e qual cargo marcar).
+export const discordGuilds = pgTable('discord_guilds', {
+  guildId: text('guild_id').primaryKey(),
+  channelId: text('channel_id').notNull(),
+  roleId: text('role_id'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 /* ── Relações (pro query builder relacional) ─────────────────── */
 
 export const userRelations = relations(user, ({ many }) => ({
