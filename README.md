@@ -36,7 +36,60 @@ server/
 public/               a página (index.html, app.js, styles.css, sw.js)
 ```
 
-## Rodar local
+## Rodar com Docker (recomendado)
+
+Precisa só do Docker. Sobe o app e um Postgres, com dados persistidos num volume.
+
+```bash
+cp .env.example .env                  # e preencha BETTER_AUTH_SECRET (openssl rand -base64 32)
+docker compose up -d --build db app   # http://localhost:8080
+docker compose logs -f app            # acompanhar
+docker compose down                   # parar (o banco continua no volume)
+```
+
+### Mostrar pros amigos (túnel Cloudflare)
+
+**Opção A — rápido, sem conta.** A URL é aleatória e muda a cada vez que o túnel sobe.
+
+```bash
+docker compose up -d --build db app
+docker compose --profile quick up -d tunnel
+docker compose logs tunnel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | head -1
+```
+
+Copie a URL que aparecer e coloque no `.env`:
+
+```
+PUBLIC_URL=https://SUA-URL.trycloudflare.com
+TRUSTED_ORIGINS=http://localhost:8080,https://SUA-URL.trycloudflare.com
+```
+
+Depois reaplique o app com o novo `.env`:
+
+```bash
+docker compose up -d app
+```
+
+Mande a URL pros amigos. Se você reiniciar o túnel, a URL muda: repita os dois últimos passos.
+
+**Opção B — link fixo.** Precisa de um domínio na Cloudflare. Em **Zero Trust → Networks → Tunnels**, crie um túnel, aponte um hostname (ex.: `blink.seudominio.com`) para `http://app:8080` e copie o token. No `.env`:
+
+```
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+PUBLIC_URL=https://blink.seudominio.com
+TRUSTED_ORIGINS=http://localhost:8080,https://blink.seudominio.com
+```
+
+```bash
+docker compose up -d --build
+docker compose --profile named up -d tunnel-named
+```
+
+O link não muda e funciona enquanto o seu PC estiver ligado com o Docker rodando.
+
+> O túnel encaminha tráfego pro seu PC: enquanto ele estiver no ar, quem tiver o link acessa o app. Só compartilhe com quem você quer.
+
+## Rodar local (sem Docker)
 
 Precisa de Node 22+ e um Postgres.
 
