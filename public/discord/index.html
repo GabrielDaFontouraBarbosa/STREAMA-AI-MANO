@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini Blink</title>
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --fg: #f4f4f6;
+    --muted: #9a9aa6;
+    --live: #e5484d;
+    --card: rgba(20, 20, 28, 0.82);
+    --sait: var(--discord-safe-area-inset-top, env(safe-area-inset-top, 0px));
+    --saib: var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --sail: var(--discord-safe-area-inset-left, env(safe-area-inset-left, 0px));
+    --sair: var(--discord-safe-area-inset-right, env(safe-area-inset-right, 0px));
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center;
+    padding: var(--sait) var(--sair) var(--saib) var(--sail); }
+  canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; display: none; background: #000; }
+  canvas.on { display: block; }
+  #badge { position: fixed; top: calc(var(--sait) + 10px); left: calc(var(--sail) + 10px);
+    display: none; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+    background: var(--live); font-weight: 700; font-size: 12px; letter-spacing: .04em; }
+  #badge.on { display: inline-flex; }
+  #badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+  #panel { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
+  #panel[hidden] { display: none; }
+  .card { background: var(--card); border-radius: 16px; padding: 22px 24px; max-width: 360px; width: 100%; }
+  .card h1 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); }
+  .card form { margin-top: 14px; display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid #33333f;
+    background: #15151d; color: var(--fg); font: inherit; text-transform: uppercase; letter-spacing: .12em; }
+  button { padding: 10px 14px; border-radius: 10px; border: 0; background: var(--live); color: #fff;
+    font: inherit; font-weight: 700; cursor: pointer; }
+  button.ghost { background: #2a2a35; }
+  #sound { position: fixed; bottom: calc(var(--saib) + 14px); left: 50%; transform: translateX(-50%); }
+  #sound[hidden] { display: none; }
+  .actions { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .actions[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="screen" aria-label="Live"></canvas></div>
+  <div id="badge">AO VIVO</div>
+
+  <div id="panel">
+    <div class="card">
+      <h1 id="title">Mini Blink</h1>
+      <p id="msg">Conectando…</p>
+      <form id="code-form" hidden>
+        <input id="code" maxlength="6" placeholder="AB12CD" autocomplete="off" aria-label="Código da sala">
+        <button type="submit">Assistir</button>
+      </form>
+      <div class="actions" id="actions" hidden>
+        <button class="ghost" id="open-browser" type="button">Abrir no navegador</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="sound" type="button" hidden>🔊 Ligar o som</button>
+
+  <script type="module" src="/discord/viewer.js"></script>
+</body>
+</html>

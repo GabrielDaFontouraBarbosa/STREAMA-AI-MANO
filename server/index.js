@@ -8,7 +8,8 @@ import http from 'node:http';
 import { config } from './src/config.js';
 import { runMigrations, pool } from './src/db/index.js';
 import { createApp } from './src/app.js';
-import { attachSignaling } from './src/signaling.js';
+import { attachSignaling, originAllowed } from './src/signaling.js';
+import { attachRelay } from './src/relay.js';
 import { closeDanglingStreams } from './src/hub.js';
 
 await runMigrations();
@@ -16,6 +17,7 @@ await closeDanglingStreams();
 
 const server = http.createServer(createApp());
 const wss = attachSignaling(server);
+const relay = attachRelay(server, { originAllowed });
 
 server.listen(config.port, () => {
   console.log(`⚡ Blink rodando em ${config.publicUrl} (porta ${config.port})`);
@@ -26,6 +28,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, () => {
     console.log(`${sig} — encerrando…`);
     wss.close();
+    relay.close();
     server.close(() => pool.end().finally(() => process.exit(0)));
     setTimeout(() => process.exit(0), 8000).unref();
   });

@@ -5,6 +5,8 @@
    extensão de navegador depois.
    ═══════════════════════════════════════════════════════════ */
 
+import { createRelayPublisher } from './relay-host.js';
+
 const $ = (s) => document.querySelector(s);
 
 /* Título abre (a piscada) quando a fonte dele chega, ou em 1,2s no máximo. */
@@ -482,6 +484,11 @@ const host = (function () {
   const countEl = $('#viewer-n');
 
   let stream = null;
+  // Mini Blink: quem assiste pelo Discord recebe por WebSocket (lá não tem WebRTC).
+  const relay = createRelayPublisher({
+    onViewers: (n) => { if (n > 0) chat.push('', `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'} pelo Discord.`, true); },
+    log: (...a) => console.info(...a),
+  });
   let ws = null;
   let heartbeat = null;
   let roomCode = '';
@@ -707,6 +714,7 @@ const host = (function () {
           $('#copy-profile').hidden = !links.profile;
           scramble(codeEl, roomCode);
           $('#room-tag').textContent = 'Sala ' + roomCode;
+          relay.start({ stream, roomCode, relayKey: m.relayKey });
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
@@ -715,6 +723,7 @@ const host = (function () {
         case 'room-resumed':
           attempt = 0;
           links = m.links || links;
+          relay.start({ stream, roomCode, relayKey: m.relayKey });
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Conexão com o servidor voltou.', true);
@@ -825,6 +834,7 @@ const host = (function () {
   }
 
   function stop() {
+    relay.stop();
     for (const id of [...peers.keys()]) dropPeer(id);
     names.clear();
     stream?.getTracks().forEach((t) => t.stop());
@@ -880,6 +890,7 @@ const host = (function () {
     stream.addTrack(newTrack);
     video.srcObject = stream;
     newTrack.addEventListener('ended', stop);
+    relay.setStream(stream);
 
     hintTrack(newTrack, nextMode);
     mode = nextMode;

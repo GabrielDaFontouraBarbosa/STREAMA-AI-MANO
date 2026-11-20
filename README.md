@@ -36,6 +36,13 @@ server/
 public/               a página (index.html, app.js, styles.css, sw.js)
 ```
 
+## Mini Blink (Discord)
+
+Bot que anuncia a live no Discord e deixa assistir **dentro do próprio
+Discord**. Como lá não tem WebRTC, o vídeo vai por WebSocket com WebCodecs
+(`server/src/relay.js`, `public/relay-host.js`, `public/discord/`). Configuração
+e testes em [`mini-blink/README.md`](mini-blink/README.md).
+
 ## Rodar com Docker (recomendado)
 
 Precisa só do Docker. Sobe o app e um Postgres, com dados persistidos num volume.

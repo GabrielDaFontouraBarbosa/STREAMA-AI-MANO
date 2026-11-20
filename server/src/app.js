@@ -6,12 +6,14 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { auth } from './auth.js';
+import { config } from './config.js';
 import { pool } from './db/index.js';
 import * as friends from './friends.js';
 import * as hub from './hub.js';
 import * as push from './push.js';
 import { getIceServers, turnConfigured } from './turn.js';
 import { isRoomOpen } from './signaling.js';
+import * as discord from './discord.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -67,6 +69,36 @@ export function createApp() {
     if (!allowed) return res.json({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }], turn: false });
     res.json(await getIceServers());
   }));
+
+  /* ── status de sala ────────────────────────────────────── */
+  // Só diz se a sala está no ar. Quem tem o código já consegue assistir, então
+  // isso não revela nada novo. Usado pelo Mini Blink (bot do Discord).
+  app.get('/api/rooms/:code', (req, res) => {
+    const code = String(req.params.code).toUpperCase();
+    if (!ROOM_RE.test(code)) return res.status(400).json({ error: 'invalid_code' });
+    res.json({ code, open: isRoomOpen(code) });
+  });
+
+  /* ── Mini Blink (Discord) ──────────────────────────────── */
+  // O bot liga a instância/canal da Activity a uma sala (precisa do segredo).
+  app.post('/api/discord/link', (req, res) => {
+    if (!discord.secretOk(req.get('authorization'))) return res.status(401).json({ error: 'unauthorized' });
+    const ok = discord.link({
+      code: req.body?.code, instanceId: req.body?.instanceId, channelId: req.body?.channelId,
+    });
+    res.status(ok ? 200 : 400).json({ ok });
+  });
+
+  // Endereço público de verdade (dentro do Discord, location é o proxy deles).
+  app.get('/api/discord/config', (req, res) => {
+    res.json({ publicUrl: config.publicUrl });
+  });
+
+  // A Activity pergunta qual sala abrir.
+  app.get('/api/discord/room', (req, res) => {
+    const code = discord.resolve({ instanceId: req.query.instance, channelId: req.query.channel });
+    res.json({ code });
+  });
 
   /* ── perfis ────────────────────────────────────────────── */
   app.get('/api/users/:username', requireAuth, wrap(async (req, res) => {
@@ -167,6 +199,15 @@ export function createApp() {
   // username e dispara o pedido; o host aceita ou não.
   app.get(/^\/@([a-zA-Z0-9_]{3,20})\/?$/, (req, res) => {
     res.redirect(302, `/?perfil=${encodeURIComponent(req.params[0].toLowerCase())}`);
+  });
+
+  /* ── Activity do Discord ───────────────────────────────── */
+  // Com o mapeamento "/" → Blink no portal do Discord, a Activity abre a raiz
+  // com ?frame_id=...&instance_id=...: aí servimos a página do Mini Blink.
+  app.get('/', (req, res, next) => {
+    if (!req.query.frame_id) return next();
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(path.join(PUBLIC_DIR, 'discord', 'index.html'));
   });
 
   /* ── estáticos ─────────────────────────────────────────── */

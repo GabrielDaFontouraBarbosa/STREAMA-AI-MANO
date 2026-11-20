@@ -21,6 +21,9 @@ export const config = {
     ttl: Number(env.TURN_CREDENTIAL_TTL || 60 * 60 * 6), // 6h
   },
 
+  // Mini Blink (bot do Discord): segredo compartilhado entre o bot e o Blink.
+  miniBlinkSecret: env.MINI_BLINK_SECRET || '',
+
   // Web Push — gere com `npm run vapid:keys` (em server/)
   vapid: {
     publicKey: env.VAPID_PUBLIC_KEY,
