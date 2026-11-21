@@ -25,3 +25,7 @@ RAILWAY_DEPLOY.md
 .env.*
 host-app
 viewer
+
+# Mini Blink: segredos e dados locais do bot
+**/.env
+mini-blink/data

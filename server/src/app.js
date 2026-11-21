@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
-import { auth } from './auth.js';
+import { auth, discordLoginEnabled } from './auth.js';
 import { config } from './config.js';
 import { pool } from './db/index.js';
 import * as friends from './friends.js';
@@ -14,6 +14,7 @@ import * as push from './push.js';
 import { getIceServers, turnConfigured } from './turn.js';
 import { isRoomOpen } from './signaling.js';
 import * as discord from './discord.js';
+import { getBot } from './minibot.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -56,7 +57,15 @@ export function createApp() {
   app.get('/api/me', wrap(async (req, res) => {
     const s = await sessionOf(req);
     if (!s) return res.status(401).json({ user: null });
-    res.json({ user: { ...friends.publicUser(s.user), email: s.user.email } });
+    const discordId = discordLoginEnabled ? await discord.discordIdOf(s.user.id) : null;
+    res.json({
+      user: { ...friends.publicUser(s.user), email: s.user.email },
+      discord: {
+        enabled: discordLoginEnabled,       // dá pra vincular?
+        linked: !!discordId,                // já vinculou?
+        announce: !!getBot()?.canAnnounce(), // o bot pode postar a live?
+      },
+    });
   }));
 
   /* ── ICE / TURN ────────────────────────────────────────── */
@@ -93,6 +102,33 @@ export function createApp() {
   app.get('/api/discord/config', (req, res) => {
     res.json({ publicUrl: config.publicUrl });
   });
+
+  // Botão "Mandar no Discord": o bot posta a live de quem está transmitindo
+  // no canal de lives do servidor, em nome da conta do Discord vinculada.
+  const ANNOUNCE_ERRORS = {
+    not_live: [409, 'Você não está transmitindo agora.'],
+    not_linked: [400, 'Conecte sua conta do Discord primeiro.'],
+    bot_offline: [503, 'O bot do Discord está desligado agora.'],
+    no_channel: [503, 'O canal de lives do Discord não está configurado.'],
+    not_member: [403, 'Sua conta do Discord não está no servidor das lives.'],
+    no_permission: [503, 'O bot não tem permissão pra postar no canal de lives.'],
+  };
+  app.post('/api/discord/announce', requireAuth, wrap(async (req, res) => {
+    const fail = (code, extra) => {
+      const [status, message] = ANNOUNCE_ERRORS[code] ?? [500, 'Não deu pra mandar agora.'];
+      res.status(status).json({ error: code, message, ...extra });
+    };
+    const code = hub.liveRoomOf(req.user.id);
+    if (!code || !isRoomOpen(code)) return fail('not_live');
+    const discordId = await discord.discordIdOf(req.user.id);
+    if (!discordId) return fail('not_linked');
+    const bot = getBot();
+    if (!bot) return fail('bot_offline');
+    const title = String(req.body?.title ?? '').trim().slice(0, 200);
+    const r = await bot.announce({ discordUserId: discordId, code, title });
+    if (!r.ok) return fail(r.error, r.guild ? { guild: r.guild } : undefined);
+    res.json({ ok: true, already: !!r.already, guild: r.guild, channel: r.channel });
+  }));
 
   // A Activity pergunta qual sala abrir.
   app.get('/api/discord/room', (req, res) => {

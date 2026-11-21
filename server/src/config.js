@@ -21,6 +21,14 @@ export const config = {
     ttl: Number(env.TURN_CREDENTIAL_TTL || 60 * 60 * 6), // 6h
   },
 
+  // Login do Discord (só pra VINCULAR à conta do Blink, não cria conta nova).
+  // Discord Developer Portal → OAuth2: Client ID e Client Secret; redirect:
+  //   <PUBLIC_URL>/api/auth/callback/discord
+  discord: {
+    clientId: env.DISCORD_CLIENT_ID || '',
+    clientSecret: env.DISCORD_CLIENT_SECRET || '',
+  },
+
   // Mini Blink (bot do Discord): segredo compartilhado entre o bot e o Blink.
   miniBlinkSecret: env.MINI_BLINK_SECRET || '',
 

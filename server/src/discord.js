@@ -3,7 +3,9 @@
 // qual sala abrir. Tudo em memória — some com a sala ou em 12h.
 
 import crypto from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { config } from './config.js';
+import { db, schema } from './db/index.js';
 import { isRoomOpen } from './signaling.js';
 
 const TTL_MS = 12 * 60 * 60 * 1000;
@@ -12,6 +14,16 @@ const ROOM_RE = /^[0-9A-F]{6}$/;
 
 const byInstance = new Map(); // instanceId → { code, at }
 const byChannel = new Map();  // channelId  → { code, at }
+
+// ID do Discord vinculado à conta do Blink (null se não vinculou).
+export async function discordIdOf(userId) {
+  const [row] = await db
+    .select({ accountId: schema.account.accountId })
+    .from(schema.account)
+    .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, 'discord')))
+    .limit(1);
+  return row?.accountId ?? null;
+}
 
 export function miniBlinkEnabled() {
   return !!config.miniBlinkSecret;

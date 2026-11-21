@@ -105,6 +105,41 @@ No `.env`, preencha `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` (Application ID),
 O bot precisa ficar ligado pra responder. O mais simples é rodar no seu PC
 enquanto você transmite.
 
+## Bot 24h dentro do Blink (Render)
+
+Com `DISCORD_TOKEN` nas variáveis do Blink, o bot liga junto com o site
+(`server/src/minibot.js`). No Render, o Blink se acessa a cada 10 min pela
+rota `/version` (que não usa o banco) pra não dormir: um serviço ligado o mês
+todo cabe nas ~750 h grátis do Render.
+
+Variáveis no Render: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`
+e `DISCORD_LIVE_CHANNEL_ID`. O `MINI_BLINK_SECRET` e o `PUBLIC_URL` já estão lá.
+
+**Não rode o bot no PC ao mesmo tempo.** Os dois responderiam os mesmos
+comandos e um deles daria erro.
+
+## Conectar Discord e "Mandar no Discord"
+
+- **Conectar Discord** (topo do Blink): vincula a conta do Discord à conta do
+  Blink pelo login oficial do Discord. Não cria conta nova.
+- **Mandar no Discord** (ao lado de "Copiar convite", durante a live): o bot
+  posta o anúncio no canal `DISCORD_LIVE_CHANNEL_ID` em seu nome, com seu
+  apelido do servidor. O fim da live atualiza o anúncio sozinho.
+
+Pra ligar:
+
+1. Portal do Discord → **OAuth2**: copie o **Client Secret** e, em
+   **Redirects**, adicione `https://SEU-BLINK/api/auth/callback/discord`.
+2. No Blink: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` e
+   `DISCORD_LIVE_CHANNEL_ID`.
+3. O botão só aparece pra quem conectou o Discord e com o bot no ar. A conta
+   do Discord precisa estar no servidor do canal de lives.
+
+Testado com Blink + Postgres reais: link de vínculo apontando pro Discord com
+o retorno certo, e as respostas pra "sem live", "sem Discord conectado" e
+"bot fora do ar". **Não testado:** o login do Discord de verdade e o post
+pelo botão (precisam do seu app e servidor do Discord).
+
 ## Desenvolvimento
 
 ```bash

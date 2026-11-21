@@ -7,6 +7,10 @@ import { username } from 'better-auth/plugins';
 import { db, schema } from './db/index.js';
 import { config } from './config.js';
 
+// Discord: só vincula a uma conta que já existe (disableSignUp). O e-mail do
+// Discord pode ser diferente do e-mail do Blink.
+export const discordLoginEnabled = !!(config.discord.clientId && config.discord.clientSecret);
+
 export const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 const USERNAME_INPUT_RE = /^[a-zA-Z0-9_]{3,20}$/; // antes de normalizar pra minúsculas
 
@@ -23,6 +27,19 @@ export const auth = betterAuth({
       session: schema.session,
       account: schema.account,
       verification: schema.verification,
+    },
+  }),
+
+  ...(discordLoginEnabled && {
+    socialProviders: {
+      discord: {
+        clientId: config.discord.clientId,
+        clientSecret: config.discord.clientSecret,
+        disableSignUp: true,
+      },
+    },
+    account: {
+      accountLinking: { enabled: true, trustedProviders: ['discord'], allowDifferentEmails: true },
     },
   }),
 

@@ -285,6 +285,7 @@ const account = (function () {
   const signupForm = $('#signup-form');
   const errEl = $('#auth-error');
   let me = null;
+  let discord = { enabled: false, linked: false, announce: false };
 
   const ERRORS = {
     INVALID_EMAIL_OR_PASSWORD: 'Email ou senha incorretos.',
@@ -381,8 +382,13 @@ const account = (function () {
   async function load() {
     try {
       const r = await fetch('/api/me', { credentials: 'same-origin' });
-      if (r.ok) me = (await r.json()).user;
+      if (r.ok) {
+        const data = await r.json();
+        me = data.user;
+        discord = data.discord ?? discord;
+      }
     } catch { /* servidor dormindo / offline */ }
+    renderDiscord();
 
     $('#me-chip').hidden = !me;
     $('#logout-btn').hidden = !me;
@@ -397,7 +403,47 @@ const account = (function () {
     return me;
   }
 
-  return { get me() { return me; }, load, open };
+  /* ── Discord: vincular a conta (login oficial do Discord) ── */
+  function renderDiscord() {
+    const btn = $('#discord-btn');
+    btn.hidden = !me || !discord.enabled;
+    btn.textContent = discord.linked ? 'Discord ✓' : 'Conectar Discord';
+    btn.title = discord.linked ? 'Discord conectado — clique pra desconectar' : 'Conecte pra mandar suas lives no Discord';
+  }
+
+  $('#discord-btn').onclick = async () => {
+    try {
+      if (discord.linked) {
+        if (!confirm('Desconectar sua conta do Discord do Blink?')) return;
+        await post('/api/auth/unlink-account', { providerId: 'discord' });
+        discord.linked = false;
+        renderDiscord();
+        toast('Discord desconectado.', 'ok');
+        return;
+      }
+      const r = await post('/api/auth/link-social', {
+        provider: 'discord',
+        callbackURL: '/?discord=ok',
+        errorCallbackURL: '/?discord=erro',
+      });
+      if (r.url) location.href = r.url;
+    } catch (err) {
+      toast(err.message, 'err', 5000);
+    }
+  };
+
+  // Voltou do Discord: avisa e limpa a URL.
+  (function discordReturn() {
+    const p = new URLSearchParams(location.search);
+    const status = p.get('discord');
+    if (!status) return;
+    p.delete('discord');
+    p.delete('error');
+    history.replaceState(null, '', location.pathname + (p.size ? `?${p}` : ''));
+    setTimeout(() => toast(status === 'ok' ? 'Discord conectado!' : 'Não deu pra conectar o Discord. Tenta de novo.', status === 'ok' ? 'ok' : 'err', 5000), 400);
+  })();
+
+  return { get me() { return me; }, get discord() { return discord; }, load, open };
 })();
 
 await account.load();
@@ -715,6 +761,7 @@ const host = (function () {
           scramble(codeEl, roomCode);
           $('#room-tag').textContent = 'Sala ' + roomCode;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
+          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
@@ -724,6 +771,7 @@ const host = (function () {
           attempt = 0;
           links = m.links || links;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
+          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Conexão com o servidor voltou.', true);
@@ -850,6 +898,7 @@ const host = (function () {
     roomCode = '';
     links = { room: null, profile: null };
     $('#copy-profile').hidden = true;
+    $('#send-discord').hidden = true;
     setup.hidden = false;
     live.hidden = true;
     document.body.classList.remove('in-room');
@@ -940,6 +989,25 @@ const host = (function () {
   };
   // Link fixo /@usuario: só amigos conseguem pedir pra entrar por ele.
   $('#copy-profile').onclick = () => links.profile && copy(location.origin + links.profile, 'Link pros amigos copiado!');
+
+  // Manda a live pro canal de lives do Discord (pelo bot, em seu nome).
+  $('#send-discord').onclick = async () => {
+    const btn = $('#send-discord');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/discord/announce', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Não deu pra mandar no Discord agora.');
+      toast(j.already ? 'Essa live já está no Discord.' : `Live enviada pro #${j.channel} em ${j.guild}!`, 'ok', 4000);
+    } catch (err) {
+      toast(err.message, 'err', 5000);
+    } finally {
+      btn.disabled = false;
+    }
+  };
 
   return {
     isLive: () => !!stream,
