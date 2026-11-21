@@ -286,6 +286,7 @@ const account = (function () {
   const errEl = $('#auth-error');
   let me = null;
   let discord = { enabled: false, linked: false, announce: false };
+  let site = { discordLogin: false, supportUrl: null };
 
   const ERRORS = {
     INVALID_EMAIL_OR_PASSWORD: 'Email ou senha incorretos.',
@@ -379,7 +380,34 @@ const account = (function () {
   };
   document.querySelectorAll('[data-open-auth]').forEach((b) => (b.onclick = () => open('signup')));
 
+  async function loadSite() {
+    try {
+      const r = await fetch('/api/site');
+      if (r.ok) site = await r.json();
+    } catch { /* offline */ }
+    $('#auth-discord-wrap').hidden = !site.discordLogin;
+    const support = $('#support-link');
+    if (site.supportUrl) { support.href = site.supportUrl; support.hidden = false; }
+  }
+
+  // Entrar (ou criar conta) com o Discord.
+  $('#auth-discord').onclick = async () => {
+    try {
+      const r = await post('/api/auth/sign-in/social', {
+        provider: 'discord',
+        callbackURL: '/?discord=login',
+        newUserCallbackURL: '/?discord=novo',
+        errorCallbackURL: '/?discord=erro',
+      });
+      if (r.url) location.href = r.url;
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  };
+
   async function load() {
+    await loadSite();
     try {
       const r = await fetch('/api/me', { credentials: 'same-origin' });
       if (r.ok) {
@@ -437,10 +465,18 @@ const account = (function () {
     const p = new URLSearchParams(location.search);
     const status = p.get('discord');
     if (!status) return;
+    const error = p.get('error') || '';
     p.delete('discord');
     p.delete('error');
     history.replaceState(null, '', location.pathname + (p.size ? `?${p}` : ''));
-    setTimeout(() => toast(status === 'ok' ? 'Discord conectado!' : 'Não deu pra conectar o Discord. Tenta de novo.', status === 'ok' ? 'ok' : 'err', 5000), 400);
+    const notLinked = /account_not_linked|not_linked/i.test(error);
+    setTimeout(() => {
+      if (status === 'ok') toast('Discord conectado!', 'ok', 5000);
+      else if (status === 'login') toast('Entrou com o Discord!', 'ok', 4000);
+      else if (status === 'novo') toast(`Conta criada! Seu link é /@${me?.username ?? '…'}`, 'ok', 7000);
+      else if (notLinked) toast('Já existe uma conta com o e-mail do seu Discord. Entre com a senha e clique em "Conectar Discord".', 'err', 9000);
+      else toast('Não deu pra entrar com o Discord. Tenta de novo.', 'err', 5000);
+    }, 600);
   })();
 
   return { get me() { return me; }, get discord() { return discord; }, load, open };

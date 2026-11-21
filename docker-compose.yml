@@ -50,6 +50,7 @@ services:
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_LIVE_CHANNEL_ID: ${DISCORD_LIVE_CHANNEL_ID:-}
+      SUPPORT_URL: ${SUPPORT_URL:-}
     ports:
       - "8080:8080"
     healthcheck:

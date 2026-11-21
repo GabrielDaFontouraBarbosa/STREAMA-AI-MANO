@@ -120,8 +120,13 @@ comandos e um deles daria erro.
 
 ## Conectar Discord e "Mandar no Discord"
 
-- **Conectar Discord** (topo do Blink): vincula a conta do Discord à conta do
-  Blink pelo login oficial do Discord. Não cria conta nova.
+- **Entrar com Discord** (janela de login): entra ou cria a conta pelo
+  Discord. O `@usuario` é gerado do nome (ex.: `gabrielfontoura`). Se já
+  existir uma conta com o mesmo e-mail, ela NÃO é juntada sozinha: a pessoa
+  entra com a senha e usa "Conectar Discord" (protege contra alguém criar um
+  Discord com o e-mail de outra pessoa).
+- **Conectar Discord** (topo do Blink): vincula o Discord a uma conta que já
+  existe, estando logado.
 - **Mandar no Discord** (ao lado de "Copiar convite", durante a live): o bot
   posta o anúncio no canal `DISCORD_LIVE_CHANNEL_ID` em seu nome, com seu
   apelido do servidor. O fim da live atualiza o anúncio sozinho.

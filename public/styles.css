@@ -689,3 +689,13 @@ body.in-room .stage { max-height: calc(100svh - 250px); }
     transition-duration: .01ms !important;
   }
 }
+
+/* ── Discord: entrar / apoiar ─────────────────────────────── */
+.btn-discord { background: #5865f2; color: #fff; border-color: #5865f2; }
+.btn-discord:hover { background: #4752c4; border-color: #4752c4; }
+.auth-discord { margin: 18px 0 4px; }
+.auth-discord[hidden] { display: none; }
+.auth-or { display: block; text-align: center; margin: 14px 0 18px; }
+.support-link { color: var(--teal-up); text-decoration: none; font-weight: 600; }
+.support-link:hover { text-decoration: underline; }
+.support-link[hidden] { display: none; }

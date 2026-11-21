@@ -53,6 +53,12 @@ export function createApp() {
     res.json({ ok: true, turn: turnConfigured(), push: push.pushEnabled });
   }));
 
+  /* ── site ──────────────────────────────────────────────── */
+  // O que a página precisa saber antes de alguém logar.
+  app.get('/api/site', (req, res) => {
+    res.json({ discordLogin: discordLoginEnabled, supportUrl: config.supportUrl || null });
+  });
+
   /* ── eu ────────────────────────────────────────────────── */
   app.get('/api/me', wrap(async (req, res) => {
     const s = await sessionOf(req);

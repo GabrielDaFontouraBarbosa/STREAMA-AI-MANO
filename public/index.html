@@ -295,6 +295,7 @@
 <footer class="foot">
   <span>Sua tela ao vivo num piscar de olhos.</span>
   <span>O vídeo vai direto de um navegador pro outro.</span>
+  <a id="support-link" class="support-link" href="#" target="_blank" rel="noopener" hidden>Apoiar o Blink ❤</a>
 </footer>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
@@ -308,6 +309,11 @@
     <div class="segmented auth-tabs" data-group="auth">
       <button type="button" class="seg active" data-auth="login">Entrar</button>
       <button type="button" class="seg" data-auth="signup">Criar conta</button>
+    </div>
+
+    <div id="auth-discord-wrap" class="auth-discord" hidden>
+      <button type="button" id="auth-discord" class="btn btn-discord btn-block btn-lg">Entrar com Discord</button>
+      <span class="auth-or label-micro">ou com e-mail</span>
     </div>
 
     <form id="login-form" class="auth-form stack">

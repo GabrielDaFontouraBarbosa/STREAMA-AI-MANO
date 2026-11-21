@@ -29,6 +29,9 @@ export const config = {
     clientSecret: env.DISCORD_CLIENT_SECRET || '',
   },
 
+  // Link de doação/apoio (Livepix, Ko-fi, Apoia.se…). Vazio = botão escondido.
+  supportUrl: /^https:\/\//.test(env.SUPPORT_URL || '') ? env.SUPPORT_URL : '',
+
   // Mini Blink (bot do Discord): segredo compartilhado entre o bot e o Blink.
   miniBlinkSecret: env.MINI_BLINK_SECRET || '',
 
