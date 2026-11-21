@@ -238,6 +238,18 @@ function mediaError(err) {
   }
 }
 
+/* Pediu áudio e o navegador não entregou: explica por quê, por sistema.
+   Linux (e em geral o Mac) só mandam o som de uma ABA; o Firefox não manda
+   o som da tela em lugar nenhum. */
+function audioMissingHint() {
+  const ua = navigator.userAgent;
+  if (/Firefox\//.test(ua)) return 'Live sem som: o Firefox não manda o áudio da tela. Use o Chrome ou o Edge pra transmitir com som.';
+  if (/Linux|Macintosh|Mac OS X/.test(ua) && !/Android/.test(ua)) {
+    return 'Live sem som: no Linux e no Mac o navegador só manda o áudio de uma ABA. Pare, comece de novo, escolha uma aba do Chrome e deixe "Compartilhar áudio da aba" ligado.';
+  }
+  return 'Live sem som: na janela de compartilhar, ligue "Compartilhar áudio do sistema" (ou da aba) e comece de novo.';
+}
+
 /* ── Chat (compartilhado entre os dois modos) ──────────────── */
 
 const chat = (function () {
@@ -904,6 +916,10 @@ const host = (function () {
     prefs.write('audio', wantAudio);
     await loadIce();
 
+    const noAudio = wantAudio && mode !== 'camera' && !stream.getAudioTracks().length;
+    $('#host-noaudio').hidden = !noAudio;
+    if (noAudio) toast(audioMissingHint(), 'err', 12000);
+
     hintTrack(stream.getVideoTracks()[0]);
     // Quando o usuário clica "parar de compartilhar" na barra do navegador.
     stream.getVideoTracks()[0].addEventListener('ended', stop);
@@ -924,6 +940,7 @@ const host = (function () {
     stream?.getTracks().forEach((t) => t.stop());
     stream = null;
     video.srcObject = null;
+    $('#host-noaudio').hidden = true;
     clearInterval(heartbeat);
     clearTimeout(retryTimer);
     attempt = 0;
@@ -1101,6 +1118,7 @@ const viewer = (function () {
     muteBtn.setAttribute('aria-label', off ? 'Ativar som' : 'Mutar');
     muteBtn.title = off ? 'Ativar som (M)' : 'Mutar (M)';
     $('#viewer-vol').classList.remove('blocked');
+    if (v > 0) $('#viewer-unmute').hidden = true;
     if (v > 0) lastVol = v;
     if (save) prefs.write('volume', v);
     // Mexer no volume é gesto do usuário: libera o som se o navegador barrou.
@@ -1111,6 +1129,19 @@ const viewer = (function () {
   volEl.addEventListener('input', () => setVolume(volEl.value));
   muteBtn.onclick = toggleMute;
   setVolume(prefs.read('volume', 100), { save: false });
+
+  // Som barrado pelo navegador (entrou pelo link, sem clicar em nada): botão
+  // grande em cima do vídeo — o slider pulsando passava despercebido.
+  $('#viewer-unmute').onclick = () => {
+    setVolume(lastVol || 70);
+    video.play().catch(() => {});
+  };
+
+  // A live chegou sem faixa de áudio: avisa que o problema não é aqui.
+  function checkRemoteAudio() {
+    const s = video.srcObject;
+    $('#viewer-noaudio').hidden = !s || s.getAudioTracks().length > 0;
+  }
 
   /* "Sintonizando…" com diagnóstico: diz o que está acontecendo em vez de
      girar pra sempre. Some quando o primeiro quadro chega. */
@@ -1141,6 +1172,8 @@ const viewer = (function () {
     video.classList.remove('stage-in');
     void video.offsetWidth; // reinicia a animação de entrada
     video.classList.add('stage-in');
+    checkRemoteAudio();
+    if (video.srcObject) video.srcObject.onaddtrack = checkRemoteAudio;
     if (pc?.connectionState === 'connected') setNet('live', 'ao vivo');
   }
 
@@ -1153,6 +1186,7 @@ const viewer = (function () {
       setVolume(0, { save: false });
       lastVol = wanted;
       $('#viewer-vol').classList.add('blocked');
+      $('#viewer-unmute').hidden = false;
       video.play().catch(() => {});
     });
   }
@@ -1343,6 +1377,8 @@ const viewer = (function () {
     viewerId = null;
     attempt = 0;
     setVolume(prefs.read('volume', 100), { save: false }); // desfaz o mudo forçado do autoplay
+    $('#viewer-unmute').hidden = true;
+    $('#viewer-noaudio').hidden = true;
     clearTuning();
     video.onloadeddata = null;
     video.srcObject = null;

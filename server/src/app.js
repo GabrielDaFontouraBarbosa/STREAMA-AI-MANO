@@ -1,6 +1,7 @@
 // App HTTP (Express): Better Auth em /api/auth/*, API do Blink em /api/*,
 // links diretos (/@username, /s/CODE) e os estáticos de public/.
 
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -34,12 +35,30 @@ async function requireAuth(req, res, next) {
   next();
 }
 
+// Primeiro cabeçalho de proxy conhecido com um IP válido; senão o socket.
+export function clientIp(req) {
+  const one = (v) => String(v ?? '').split(',')[0].trim();
+  for (const h of ['cf-connecting-ip', 'true-client-ip', 'x-real-ip', 'x-forwarded-for']) {
+    const ip = one(req.headers[h]);
+    if (net.isIP(ip)) return ip;
+  }
+  return String(req.socket?.remoteAddress ?? '').replace(/^::ffff:/, '') || '0.0.0.0';
+}
+
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // Railway fica na frente
+
+  // IP real de quem chamou, pro limite de tentativas do login. Atrás do proxy
+  // do Render o X-Forwarded-For pode vir em cadeia e o Better Auth descarta:
+  // aí TODO MUNDO caía no mesmo balde (10 logins/min pro site inteiro).
+  app.use('/api/auth', (req, res, next) => {
+    req.headers['x-blink-client-ip'] = clientIp(req);
+    next();
+  });
 
   // Better Auth ANTES do express.json() — ele lê o corpo sozinho.
   app.all('/api/auth/{*any}', toNodeHandler(auth));

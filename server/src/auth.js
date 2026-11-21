@@ -91,6 +91,8 @@ export const auth = betterAuth({
     cookiePrefix: 'blink',
     useSecureCookies: config.isProd,
     defaultCookieAttributes: { sameSite: 'lax', httpOnly: true },
+    // Preenchido pelo app.js com o IP real (o rate limit é por pessoa).
+    ipAddress: { ipAddressHeaders: ['x-blink-client-ip'] },
   },
 
   rateLimit: {

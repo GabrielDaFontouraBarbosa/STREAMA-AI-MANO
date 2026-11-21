@@ -150,6 +150,7 @@
           <div class="stage-wrap stage-host">
             <video id="local-video" class="stage" autoplay playsinline muted></video>
             <span class="stage-badge"><span class="stage-note">Isto é o que eles veem</span></span>
+            <span id="host-noaudio" class="stage-flag" hidden>Sem som</span>
           </div>
 
           <div class="ctrlbar">
@@ -210,6 +211,8 @@
           <div class="stage-wrap">
             <div id="tuning" class="tuning"><span></span><span></span><span></span><p>Sintonizando…</p></div>
             <video id="remote-video" class="stage" autoplay playsinline></video>
+            <span id="viewer-noaudio" class="stage-flag" hidden>Live sem som: o host não está mandando áudio</span>
+            <button id="viewer-unmute" class="unmute-cta" type="button" hidden>🔊 Toque pra ouvir</button>
           </div>
           <div class="ctrlbar">
             <button id="viewer-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
