@@ -1,0 +1,24 @@
+{
+  "name": "mini-blink",
+  "version": "1.0.0",
+  "description": "Mini Blink \u2014 bot do Discord que anuncia a live do Blink no canal",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "test": "node --test test/*.test.js",
+    "build:sdk": "esbuild activity/sdk-entry.js --bundle --format=esm --minify --target=es2020 --legal-comments=none --outfile=../public/discord/sdk.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.28.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0",
+    "esbuild": "^0.28.2"
+  }
+}

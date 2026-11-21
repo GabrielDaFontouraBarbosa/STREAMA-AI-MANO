@@ -5,6 +5,8 @@
    extensão de navegador depois.
    ═══════════════════════════════════════════════════════════ */
 
+import { createRelayPublisher } from './relay-host.js';
+
 const $ = (s) => document.querySelector(s);
 
 /* Título abre (a piscada) quando a fonte dele chega, ou em 1,2s no máximo. */
@@ -236,6 +238,18 @@ function mediaError(err) {
   }
 }
 
+/* Pediu áudio e o navegador não entregou: explica por quê, por sistema.
+   Linux (e em geral o Mac) só mandam o som de uma ABA; o Firefox não manda
+   o som da tela em lugar nenhum. */
+function audioMissingHint() {
+  const ua = navigator.userAgent;
+  if (/Firefox\//.test(ua)) return 'Live sem som: o Firefox não manda o áudio da tela. Use o Chrome ou o Edge pra transmitir com som.';
+  if (/Linux|Macintosh|Mac OS X/.test(ua) && !/Android/.test(ua)) {
+    return 'Live sem som: no Linux e no Mac o navegador só manda o áudio de uma ABA. Pare, comece de novo, escolha uma aba do Chrome e deixe "Compartilhar áudio da aba" ligado.';
+  }
+  return 'Live sem som: na janela de compartilhar, ligue "Compartilhar áudio do sistema" (ou da aba) e comece de novo.';
+}
+
 /* ── Chat (compartilhado entre os dois modos) ──────────────── */
 
 const chat = (function () {
@@ -283,6 +297,8 @@ const account = (function () {
   const signupForm = $('#signup-form');
   const errEl = $('#auth-error');
   let me = null;
+  let discord = { enabled: false, linked: false, announce: false };
+  let site = { discordLogin: false, supportUrl: null };
 
   const ERRORS = {
     INVALID_EMAIL_OR_PASSWORD: 'Email ou senha incorretos.',
@@ -376,11 +392,43 @@ const account = (function () {
   };
   document.querySelectorAll('[data-open-auth]').forEach((b) => (b.onclick = () => open('signup')));
 
+  async function loadSite() {
+    try {
+      const r = await fetch('/api/site');
+      if (r.ok) site = await r.json();
+    } catch { /* offline */ }
+    $('#auth-discord-wrap').hidden = !site.discordLogin;
+    const support = $('#support-link');
+    if (site.supportUrl) { support.href = site.supportUrl; support.hidden = false; }
+  }
+
+  // Entrar (ou criar conta) com o Discord.
+  $('#auth-discord').onclick = async () => {
+    try {
+      const r = await post('/api/auth/sign-in/social', {
+        provider: 'discord',
+        callbackURL: '/?discord=login',
+        newUserCallbackURL: '/?discord=novo',
+        errorCallbackURL: '/?discord=erro',
+      });
+      if (r.url) location.href = r.url;
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  };
+
   async function load() {
+    await loadSite();
     try {
       const r = await fetch('/api/me', { credentials: 'same-origin' });
-      if (r.ok) me = (await r.json()).user;
+      if (r.ok) {
+        const data = await r.json();
+        me = data.user;
+        discord = data.discord ?? discord;
+      }
     } catch { /* servidor dormindo / offline */ }
+    renderDiscord();
 
     $('#me-chip').hidden = !me;
     $('#logout-btn').hidden = !me;
@@ -395,7 +443,55 @@ const account = (function () {
     return me;
   }
 
-  return { get me() { return me; }, load, open };
+  /* ── Discord: vincular a conta (login oficial do Discord) ── */
+  function renderDiscord() {
+    const btn = $('#discord-btn');
+    btn.hidden = !me || !discord.enabled;
+    btn.textContent = discord.linked ? 'Discord ✓' : 'Conectar Discord';
+    btn.title = discord.linked ? 'Discord conectado — clique pra desconectar' : 'Conecte pra mandar suas lives no Discord';
+  }
+
+  $('#discord-btn').onclick = async () => {
+    try {
+      if (discord.linked) {
+        if (!confirm('Desconectar sua conta do Discord do Blink?')) return;
+        await post('/api/auth/unlink-account', { providerId: 'discord' });
+        discord.linked = false;
+        renderDiscord();
+        toast('Discord desconectado.', 'ok');
+        return;
+      }
+      const r = await post('/api/auth/link-social', {
+        provider: 'discord',
+        callbackURL: '/?discord=ok',
+        errorCallbackURL: '/?discord=erro',
+      });
+      if (r.url) location.href = r.url;
+    } catch (err) {
+      toast(err.message, 'err', 5000);
+    }
+  };
+
+  // Voltou do Discord: avisa e limpa a URL.
+  (function discordReturn() {
+    const p = new URLSearchParams(location.search);
+    const status = p.get('discord');
+    if (!status) return;
+    const error = p.get('error') || '';
+    p.delete('discord');
+    p.delete('error');
+    history.replaceState(null, '', location.pathname + (p.size ? `?${p}` : ''));
+    const notLinked = /account_not_linked|not_linked/i.test(error);
+    setTimeout(() => {
+      if (status === 'ok') toast('Discord conectado!', 'ok', 5000);
+      else if (status === 'login') toast('Entrou com o Discord!', 'ok', 4000);
+      else if (status === 'novo') toast(`Conta criada! Seu link é /@${me?.username ?? '…'}`, 'ok', 7000);
+      else if (notLinked) toast('Já existe uma conta com o e-mail do seu Discord. Entre com a senha e clique em "Conectar Discord".', 'err', 9000);
+      else toast('Não deu pra entrar com o Discord. Tenta de novo.', 'err', 5000);
+    }, 600);
+  })();
+
+  return { get me() { return me; }, get discord() { return discord; }, load, open };
 })();
 
 await account.load();
@@ -482,6 +578,11 @@ const host = (function () {
   const countEl = $('#viewer-n');
 
   let stream = null;
+  // Mini Blink: quem assiste pelo Discord recebe por WebSocket (lá não tem WebRTC).
+  const relay = createRelayPublisher({
+    onViewers: (n) => { if (n > 0) chat.push('', `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'} pelo Discord.`, true); },
+    log: (...a) => console.info(...a),
+  });
   let ws = null;
   let heartbeat = null;
   let roomCode = '';
@@ -707,6 +808,8 @@ const host = (function () {
           $('#copy-profile').hidden = !links.profile;
           scramble(codeEl, roomCode);
           $('#room-tag').textContent = 'Sala ' + roomCode;
+          relay.start({ stream, roomCode, relayKey: m.relayKey });
+          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
@@ -715,6 +818,8 @@ const host = (function () {
         case 'room-resumed':
           attempt = 0;
           links = m.links || links;
+          relay.start({ stream, roomCode, relayKey: m.relayKey });
+          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Conexão com o servidor voltou.', true);
@@ -811,6 +916,10 @@ const host = (function () {
     prefs.write('audio', wantAudio);
     await loadIce();
 
+    const noAudio = wantAudio && mode !== 'camera' && !stream.getAudioTracks().length;
+    $('#host-noaudio').hidden = !noAudio;
+    if (noAudio) toast(audioMissingHint(), 'err', 12000);
+
     hintTrack(stream.getVideoTracks()[0]);
     // Quando o usuário clica "parar de compartilhar" na barra do navegador.
     stream.getVideoTracks()[0].addEventListener('ended', stop);
@@ -825,11 +934,13 @@ const host = (function () {
   }
 
   function stop() {
+    relay.stop();
     for (const id of [...peers.keys()]) dropPeer(id);
     names.clear();
     stream?.getTracks().forEach((t) => t.stop());
     stream = null;
     video.srcObject = null;
+    $('#host-noaudio').hidden = true;
     clearInterval(heartbeat);
     clearTimeout(retryTimer);
     attempt = 0;
@@ -840,6 +951,7 @@ const host = (function () {
     roomCode = '';
     links = { room: null, profile: null };
     $('#copy-profile').hidden = true;
+    $('#send-discord').hidden = true;
     setup.hidden = false;
     live.hidden = true;
     document.body.classList.remove('in-room');
@@ -880,6 +992,7 @@ const host = (function () {
     stream.addTrack(newTrack);
     video.srcObject = stream;
     newTrack.addEventListener('ended', stop);
+    relay.setStream(stream);
 
     hintTrack(newTrack, nextMode);
     mode = nextMode;
@@ -929,6 +1042,25 @@ const host = (function () {
   };
   // Link fixo /@usuario: só amigos conseguem pedir pra entrar por ele.
   $('#copy-profile').onclick = () => links.profile && copy(location.origin + links.profile, 'Link pros amigos copiado!');
+
+  // Manda a live pro canal de lives do Discord (pelo bot, em seu nome).
+  $('#send-discord').onclick = async () => {
+    const btn = $('#send-discord');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/discord/announce', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Não deu pra mandar no Discord agora.');
+      toast(j.already ? 'Essa live já está no Discord.' : `Live enviada pro #${j.channel} em ${j.guild}!`, 'ok', 4000);
+    } catch (err) {
+      toast(err.message, 'err', 5000);
+    } finally {
+      btn.disabled = false;
+    }
+  };
 
   return {
     isLive: () => !!stream,
@@ -986,6 +1118,7 @@ const viewer = (function () {
     muteBtn.setAttribute('aria-label', off ? 'Ativar som' : 'Mutar');
     muteBtn.title = off ? 'Ativar som (M)' : 'Mutar (M)';
     $('#viewer-vol').classList.remove('blocked');
+    if (v > 0) $('#viewer-unmute').hidden = true;
     if (v > 0) lastVol = v;
     if (save) prefs.write('volume', v);
     // Mexer no volume é gesto do usuário: libera o som se o navegador barrou.
@@ -996,6 +1129,19 @@ const viewer = (function () {
   volEl.addEventListener('input', () => setVolume(volEl.value));
   muteBtn.onclick = toggleMute;
   setVolume(prefs.read('volume', 100), { save: false });
+
+  // Som barrado pelo navegador (entrou pelo link, sem clicar em nada): botão
+  // grande em cima do vídeo — o slider pulsando passava despercebido.
+  $('#viewer-unmute').onclick = () => {
+    setVolume(lastVol || 70);
+    video.play().catch(() => {});
+  };
+
+  // A live chegou sem faixa de áudio: avisa que o problema não é aqui.
+  function checkRemoteAudio() {
+    const s = video.srcObject;
+    $('#viewer-noaudio').hidden = !s || s.getAudioTracks().length > 0;
+  }
 
   /* "Sintonizando…" com diagnóstico: diz o que está acontecendo em vez de
      girar pra sempre. Some quando o primeiro quadro chega. */
@@ -1026,6 +1172,8 @@ const viewer = (function () {
     video.classList.remove('stage-in');
     void video.offsetWidth; // reinicia a animação de entrada
     video.classList.add('stage-in');
+    checkRemoteAudio();
+    if (video.srcObject) video.srcObject.onaddtrack = checkRemoteAudio;
     if (pc?.connectionState === 'connected') setNet('live', 'ao vivo');
   }
 
@@ -1038,6 +1186,7 @@ const viewer = (function () {
       setVolume(0, { save: false });
       lastVol = wanted;
       $('#viewer-vol').classList.add('blocked');
+      $('#viewer-unmute').hidden = false;
       video.play().catch(() => {});
     });
   }
@@ -1228,6 +1377,8 @@ const viewer = (function () {
     viewerId = null;
     attempt = 0;
     setVolume(prefs.read('volume', 100), { save: false }); // desfaz o mudo forçado do autoplay
+    $('#viewer-unmute').hidden = true;
+    $('#viewer-noaudio').hidden = true;
     clearTuning();
     video.onloadeddata = null;
     video.srcObject = null;

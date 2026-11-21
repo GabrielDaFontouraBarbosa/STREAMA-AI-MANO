@@ -1,0 +1,88 @@
+# Blink com Docker — um comando sobe tudo (app + Postgres).
+#
+#   docker compose up -d --build db app          # só local (http://localhost:8080)
+#
+# Com link público via Cloudflare Tunnel (escolha UM dos dois, veja o README):
+#   Rápido, sem conta (URL aleatória)  → docker compose --profile quick up -d tunnel
+#   Fixo, com domínio na Cloudflare    → docker compose --profile named up -d tunnel-named
+#
+# Variáveis: o compose lê o .env da raiz (copie de .env.example).
+
+name: blink
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: blink
+      POSTGRES_USER: postgres
+      # Senha do banco local do Docker: vem do .env (POSTGRES_PASSWORD), nunca
+      # escrita aqui. Sem ela o Postgres não sobe e avisa no log.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - blink-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blink"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/blink
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?defina BETTER_AUTH_SECRET no .env (openssl rand -base64 32)}
+      # Vazio = usa http://localhost:8080. Com túnel, o compose/README explica como preencher.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:8080}
+      CLOUDFLARE_TURN_KEY_ID: ${CLOUDFLARE_TURN_KEY_ID:-}
+      CLOUDFLARE_TURN_API_TOKEN: ${CLOUDFLARE_TURN_API_TOKEN:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:contato@blink.app}
+      MINI_BLINK_SECRET: ${MINI_BLINK_SECRET:-}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_LIVE_CHANNEL_ID: ${DISCORD_LIVE_CHANNEL_ID:-}
+      SUPPORT_URL: ${SUPPORT_URL:-}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Túnel rápido: URL pública aleatória (*.trycloudflare.com), sem conta.
+  # Ela muda a cada vez que o túnel reinicia — veja o README.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["quick"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://app:8080
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Túnel fixo: precisa de um domínio na Cloudflare e do token do túnel
+  # (Zero Trust → Networks → Tunnels). Aponte o hostname para http://app:8080.
+  tunnel-named:
+    image: cloudflare/cloudflared:latest
+    profiles: ["named"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-SEM_TOKEN_DEFINA_NO_ENV}
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  blink-pgdata:

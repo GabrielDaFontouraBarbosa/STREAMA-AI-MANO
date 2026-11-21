@@ -68,6 +68,7 @@
     <span id="me-chip" class="me-chip" hidden><span class="avatar" id="me-avatar"></span><span id="me-name"></span></span>
     <button id="login-btn" class="btn btn-ghost btn-sm" hidden>Entrar</button>
     <button id="signup-btn" class="btn btn-outline btn-sm" data-open-auth hidden>Criar conta</button>
+    <button id="discord-btn" class="btn btn-ghost btn-sm" type="button" hidden>Conectar Discord</button>
     <button id="logout-btn" class="btn btn-ghost btn-sm" hidden>Sair</button>
   </div>
 </header>
@@ -149,6 +150,7 @@
           <div class="stage-wrap stage-host">
             <video id="local-video" class="stage" autoplay playsinline muted></video>
             <span class="stage-badge"><span class="stage-note">Isto é o que eles veem</span></span>
+            <span id="host-noaudio" class="stage-flag" hidden>Sem som</span>
           </div>
 
           <div class="ctrlbar">
@@ -166,6 +168,7 @@
               <button id="copy-code" class="btn btn-outline btn-sm"><svg class="ic"><use href="#i-copy"/></svg>Copiar código</button>
               <button id="copy-link" class="btn btn-outline btn-sm"><svg class="ic"><use href="#i-share"/></svg>Copiar convite</button>
               <button id="copy-profile" class="btn btn-outline btn-sm" hidden><svg class="ic"><use href="#i-users"/></svg>Link pros amigos</button>
+              <button id="send-discord" class="btn btn-outline btn-sm" type="button" hidden><svg class="ic"><use href="#i-share"/></svg>Mandar no Discord</button>
             </div>
           </div>
 
@@ -208,6 +211,8 @@
           <div class="stage-wrap">
             <div id="tuning" class="tuning"><span></span><span></span><span></span><p>Sintonizando…</p></div>
             <video id="remote-video" class="stage" autoplay playsinline></video>
+            <span id="viewer-noaudio" class="stage-flag" hidden>Live sem som: o host não está mandando áudio</span>
+            <button id="viewer-unmute" class="unmute-cta" type="button" hidden>🔊 Toque pra ouvir</button>
           </div>
           <div class="ctrlbar">
             <button id="viewer-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
@@ -293,6 +298,7 @@
 <footer class="foot">
   <span>Sua tela ao vivo num piscar de olhos.</span>
   <span>O vídeo vai direto de um navegador pro outro.</span>
+  <a id="support-link" class="support-link" href="#" target="_blank" rel="noopener" hidden>Apoiar o Blink ❤</a>
 </footer>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
@@ -306,6 +312,11 @@
     <div class="segmented auth-tabs" data-group="auth">
       <button type="button" class="seg active" data-auth="login">Entrar</button>
       <button type="button" class="seg" data-auth="signup">Criar conta</button>
+    </div>
+
+    <div id="auth-discord-wrap" class="auth-discord" hidden>
+      <button type="button" id="auth-discord" class="btn btn-discord btn-block btn-lg">Entrar com Discord</button>
+      <span class="auth-or label-micro">ou com e-mail</span>
     </div>
 
     <form id="login-form" class="auth-form stack">

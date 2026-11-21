@@ -15,6 +15,7 @@ import { auth } from './auth.js';
 import { config } from './config.js';
 import { areFriends, publicUser } from './friends.js';
 import * as hub from './hub.js';
+import { closeRelay, isRelayPath, relayKey } from './relay.js';
 
 const MAX_VIEWERS = 50;
 const MAX_NAME = 24;
@@ -66,7 +67,7 @@ function newRoom(ws) {
   };
 }
 
-function originAllowed(req) {
+export function originAllowed(req) {
   const origin = req.headers.origin;
   if (!origin) return true; // clientes não-navegador
   try {
@@ -80,6 +81,7 @@ export function attachSignaling(httpServer) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 
   httpServer.on('upgrade', async (req, socket, head) => {
+    if (isRelayPath(req.url)) return; // vídeo do Mini Blink: relay.js cuida
     if (!originAllowed(req)) { socket.destroy(); return; }
     let session = null;
     try {
@@ -132,6 +134,7 @@ function endRoom(code) {
     hub.send(v.ws, { type: 'host-left' });
   }
   rooms.delete(code);
+  closeRelay(code);
   hub.endLive(room.hostUserId).catch((err) => console.error('endLive:', err.message));
 }
 
@@ -189,7 +192,7 @@ async function handle(ws, msg) {
       rooms.set(roomCode, room);
       ws.role = 'host';
       ws.roomCode = roomCode;
-      hub.send(ws, { type: 'room-created', roomCode, links: roomLinks(roomCode, ws.user) });
+      hub.send(ws, { type: 'room-created', roomCode, links: roomLinks(roomCode, ws.user), relayKey: relayKey(roomCode) });
       await hub.goLive(ws.user, roomCode, msg.source === 'camera' ? 'camera' : 'screen');
       break;
     }
@@ -229,6 +232,7 @@ async function handle(ws, msg) {
         type: 'room-resumed',
         roomCode: code,
         links: roomLinks(code, ws.user),
+        relayKey: relayKey(code),
         viewers: [...room.viewers].map(([viewerId, v]) => ({ viewerId, name: v.name, username: v.username })),
       });
       broadcast(room, { type: 'room-users', users: roomUsers(room) });

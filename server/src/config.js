@@ -21,6 +21,20 @@ export const config = {
     ttl: Number(env.TURN_CREDENTIAL_TTL || 60 * 60 * 6), // 6h
   },
 
+  // Login do Discord (só pra VINCULAR à conta do Blink, não cria conta nova).
+  // Discord Developer Portal → OAuth2: Client ID e Client Secret; redirect:
+  //   <PUBLIC_URL>/api/auth/callback/discord
+  discord: {
+    clientId: env.DISCORD_CLIENT_ID || '',
+    clientSecret: env.DISCORD_CLIENT_SECRET || '',
+  },
+
+  // Link de doação/apoio (Livepix, Ko-fi, Apoia.se…). Vazio = botão escondido.
+  supportUrl: /^https:\/\//.test(env.SUPPORT_URL || '') ? env.SUPPORT_URL : '',
+
+  // Mini Blink (bot do Discord): segredo compartilhado entre o bot e o Blink.
+  miniBlinkSecret: env.MINI_BLINK_SECRET || '',
+
   // Web Push — gere com `npm run vapid:keys` (em server/)
   vapid: {
     publicKey: env.VAPID_PUBLIC_KEY,
