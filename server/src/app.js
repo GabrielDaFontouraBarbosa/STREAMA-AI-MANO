@@ -35,14 +35,21 @@ async function requireAuth(req, res, next) {
   next();
 }
 
-// Primeiro cabeçalho de proxy conhecido com um IP válido; senão o socket.
+// IP de quem chamou, pro limite de tentativas do login. Só vale um cabeçalho
+// que o PROXY escreve, nunca um que o visitante consiga mandar:
+// - config.clientIpHeader (CLIENT_IP_HEADER; no Render, cf-connecting-ip:
+//   a Cloudflare na frente do Render sobrescreve esse cabeçalho a cada pedido);
+// - senão req.ip do Express com "trust proxy": o último salto do
+//   X-Forwarded-For, que é o que o proxy acrescentou. O começo da lista o
+//   visitante inventa (o Render só acrescenta, não limpa).
 export function clientIp(req) {
-  const one = (v) => String(v ?? '').split(',')[0].trim();
-  for (const h of ['cf-connecting-ip', 'true-client-ip', 'x-real-ip', 'x-forwarded-for']) {
-    const ip = one(req.headers[h]);
+  const strip = (ip) => String(ip ?? '').trim().replace(/^::ffff:/, '');
+  if (config.clientIpHeader) {
+    const ip = strip(String(req.headers[config.clientIpHeader] ?? '').split(',')[0]);
     if (net.isIP(ip)) return ip;
   }
-  return String(req.socket?.remoteAddress ?? '').replace(/^::ffff:/, '') || '0.0.0.0';
+  const ip = strip(req.ip || req.socket?.remoteAddress);
+  return net.isIP(ip) ? ip : '0.0.0.0';
 }
 
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
