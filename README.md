@@ -48,7 +48,7 @@ e testes em [`mini-blink/README.md`](mini-blink/README.md).
 Precisa só do Docker. Sobe o app e um Postgres, com dados persistidos num volume.
 
 ```bash
-cp .env.example .env                  # e preencha BETTER_AUTH_SECRET (openssl rand -base64 32)
+cp .env.example .env                  # preencha BETTER_AUTH_SECRET e POSTGRES_PASSWORD
 docker compose up -d --build db app   # http://localhost:8080
 docker compose logs -f app            # acompanhar
 docker compose down                   # parar (o banco continua no volume)
