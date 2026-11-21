@@ -17,8 +17,9 @@ services:
     environment:
       POSTGRES_DB: blink
       POSTGRES_USER: postgres
-      # Senha do banco local do Docker: vem do .env, nunca escrita aqui.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      # Senha do banco local do Docker: vem do .env (POSTGRES_PASSWORD), nunca
+      # escrita aqui. Sem ela o Postgres não sobe e avisa no log.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - blink-pgdata:/var/lib/postgresql/data
     healthcheck:
