@@ -491,7 +491,18 @@ const account = (function () {
     }, 600);
   })();
 
-  return { get me() { return me; }, get discord() { return discord; }, load, open };
+  // Status do Discord de AGORA (o da carga da página pode estar velho: o bot
+  // ainda ligando depois de um deploy, ou o Discord conectado em outra aba).
+  async function refreshDiscord() {
+    try {
+      const r = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) discord = (await r.json()).discord ?? discord;
+    } catch { /* fica com o que tinha */ }
+    renderDiscord();
+    return discord;
+  }
+
+  return { get me() { return me; }, get discord() { return discord; }, load, open, refreshDiscord };
 })();
 
 await account.load();
@@ -809,7 +820,7 @@ const host = (function () {
           scramble(codeEl, roomCode);
           $('#room-tag').textContent = 'Sala ' + roomCode;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
-          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
+          showSendDiscord();
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
@@ -819,7 +830,7 @@ const host = (function () {
           attempt = 0;
           links = m.links || links;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
-          $('#send-discord').hidden = !(account.discord.linked && account.discord.announce);
+          showSendDiscord();
           setNet('live', 'no ar');
           chat.attach(sock);
           chat.push('', 'Conexão com o servidor voltou.', true);
@@ -1042,6 +1053,14 @@ const host = (function () {
   };
   // Link fixo /@usuario: só amigos conseguem pedir pra entrar por ele.
   $('#copy-profile').onclick = () => links.profile && copy(location.origin + links.profile, 'Link pros amigos copiado!');
+
+  // "Mandar no Discord" só aparece se o Discord está conectado e o bot pode
+  // postar — perguntado na hora, não na carga da página.
+  async function showSendDiscord() {
+    const d = await account.refreshDiscord();
+    if (!roomCode) return; // a live acabou enquanto perguntava
+    $('#send-discord').hidden = !(d.linked && d.announce);
+  }
 
   // Manda a live pro canal de lives do Discord (pelo bot, em seu nome).
   $('#send-discord').onclick = async () => {

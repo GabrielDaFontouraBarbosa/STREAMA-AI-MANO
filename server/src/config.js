@@ -29,6 +29,11 @@ export const config = {
     clientSecret: env.DISCORD_CLIENT_SECRET || '',
   },
 
+  // Cabeçalho com o IP real do visitante, escrito pelo proxy na frente do app
+  // (usado no limite de tentativas do login). No Render: cf-connecting-ip.
+  // Vazio = último salto do X-Forwarded-For (Express "trust proxy").
+  clientIpHeader: (env.CLIENT_IP_HEADER ?? (env.RENDER ? 'cf-connecting-ip' : '')).trim().toLowerCase(),
+
   // Link de doação/apoio (Livepix, Ko-fi, Apoia.se…). Vazio = botão escondido.
   supportUrl: /^https:\/\//.test(env.SUPPORT_URL || '') ? env.SUPPORT_URL : '',
 
