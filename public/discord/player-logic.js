@@ -61,3 +61,16 @@ export function createFailureTracker({ max = 3, healthyMs = 10000, now = () => D
     reset() { failures = 0; healthySince = null; gaveUp = false; },
   };
 }
+
+// Config do AudioDecoder a partir da config que o host mandou. O Opus só
+// tem taxas nativas (48/24/16/12/8 kHz); o host codifica na taxa do áudio
+// dele (ex.: 44,1 kHz) e o fluxo Opus decodifica em qualquer taxa nativa.
+// Pedir 44,1 kHz ao decoder: o isConfigSupported() diz "sim" e o configure()
+// falha em parte dos Chromium (o som some calado). Para Opus, sempre 48 kHz.
+const OPUS_RATES = [48000, 24000, 16000, 12000, 8000];
+export function audioDecoderConfig(cfg) {
+  if (!cfg) return null;
+  const sampleRate = cfg.codec === 'opus' && !OPUS_RATES.includes(cfg.sampleRate) ? 48000 : cfg.sampleRate;
+  return { codec: cfg.codec, sampleRate, numberOfChannels: cfg.numberOfChannels };
+}
+

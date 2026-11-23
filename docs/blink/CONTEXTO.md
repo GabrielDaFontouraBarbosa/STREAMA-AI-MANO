@@ -50,9 +50,9 @@ do caderno 01:
 - testes unitários e E2E;
 - CI no GitHub Actions.
 
-Pendência do PR #4: no CI, um E2E falhou com "áudio não chegou" (o vídeo
-passou). Já foi colocado um diagnóstico no teste; ler o log da próxima
-execução antes de mudar qualquer código.
+O CI do PR #4 achou um bug real: no Chromium 153, o som da Activity sumia
+porque o decoder Opus era configurado a 44,1 kHz. Corrigido (`audioDecoderConfig`
+em `player-logic.js`); os contadores por etapa do áudio ficaram no código.
 
 **Fila (adiado, com motivo em `MELHORIAS.md` §6):**
 - visual do caderno 05 (capa, textos, menu de conta, ícones SVG, cor do
@@ -155,6 +155,7 @@ execução antes de mudar qualquer código.
 | Playwright `evaluate`/`fill` contam como gesto do usuário | Para simular "sem gesto", dispare a ação pela própria página (`addInitScript`). |
 | Testar WebCodecs em `about:blank` | Não é contexto seguro; teste em `http://localhost`. |
 | Cookie jar que sobrescreve em vez de somar | Acumule os cookies por nome. |
+| `AudioDecoder` Opus pedido a 44,1 kHz | O `isConfigSupported()` diz "sim" e o `configure()` falha no Chromium 153 (som some calado). Opus decodifica sempre numa taxa nativa (48 kHz). Achado no CI, não aqui (Chromium 157): por isso o CI é obrigatório. |
 | Prometer "tarefa agendada" para o início de sessão | Agendamento é por horário. Para "toda sessão", use o `CLAUDE.md`. |
 
 ---

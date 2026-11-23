@@ -13,7 +13,7 @@
      4. a pessoa digita o código
    ═══════════════════════════════════════════════════════════ */
 
-import { createFailureTracker, mergeConfig } from './player-logic.js';
+import { audioDecoderConfig, createFailureTracker, mergeConfig } from './player-logic.js';
 
 const ROOM_RE = /^[0-9A-F]{6}$/;
 const KIND_VIDEO = 1;
@@ -162,8 +162,9 @@ function playAudio(data) {
   playhead += buf.duration;
 }
 
-function markNoAudio(on) {
+function markNoAudio(on, text = 'Live sem som') {
   stats.noAudio = on;
+  $('#noaudio').textContent = text;
   $('#noaudio').hidden = !on;
   if (on) $('#sound').hidden = true;
 }
@@ -174,11 +175,16 @@ async function setupAudio(cfg) {
   if (!cfg || typeof AudioDecoder === 'undefined') return;
   stats.audioConfigs = (stats.audioConfigs ?? 0) + 1;
   markNoAudio(false);
-  const conf = { codec: cfg.codec, sampleRate: cfg.sampleRate, numberOfChannels: cfg.numberOfChannels };
+  const conf = audioDecoderConfig(cfg);
   const ok = await AudioDecoder.isConfigSupported(conf).then((r) => r.supported, () => false);
   stats.audioSupported = ok;
-  if (!ok) return;
-  audioDecoder = new AudioDecoder({ output: playAudio, error: (e) => { stats.audioError = e?.message ?? 'erro'; audioDecoder = null; } });
+  if (!ok) { markNoAudio(true, 'Som não abriu aqui'); return; }
+  // Erro do decoder (inclusive config recusada no configure): avisa em vez
+  // de deixar o som sumir calado.
+  audioDecoder = new AudioDecoder({
+    output: playAudio,
+    error: (e) => { stats.audioError = e?.message ?? 'erro'; audioDecoder = null; markNoAudio(true, 'Som não abriu aqui'); },
+  });
   audioDecoder.configure(conf);
   if (!audioCtx || audioCtx.state !== 'running') $('#sound').hidden = false;
 }

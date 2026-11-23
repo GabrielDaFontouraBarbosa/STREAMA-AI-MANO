@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFailureTracker, mergeConfig, videoSignature } from '../../public/discord/player-logic.js';
+import { audioDecoderConfig, createFailureTracker, mergeConfig, videoSignature } from '../../public/discord/player-logic.js';
 import { videoSignature as relayVideoSignature } from '../../server/src/relay-policy.js';
 
 const v = { codec: 'avc1.42E01F', width: 1280, height: 720 };
@@ -63,4 +63,11 @@ test('"Tentar de novo" recomeça a contagem', () => {
   f.reset();
   assert.equal(f.gaveUp, false);
   assert.equal(f.fail(), 'retry');
+});
+
+test('decoder Opus sempre numa taxa nativa (44,1 kHz quebrava o configure em parte dos Chromium)', () => {
+  assert.deepEqual(audioDecoderConfig({ codec: 'opus', sampleRate: 44100, numberOfChannels: 2 }), { codec: 'opus', sampleRate: 48000, numberOfChannels: 2 });
+  assert.equal(audioDecoderConfig({ codec: 'opus', sampleRate: 24000, numberOfChannels: 1 }).sampleRate, 24000);
+  assert.equal(audioDecoderConfig({ codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2 }).sampleRate, 44100);
+  assert.equal(audioDecoderConfig(null), null);
 });
