@@ -75,6 +75,8 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
   let videoCfg = null;
   let audioCfg = null;
   const notes = new Map(); // trilha → aviso de "não consigo mandar" (reenviado ao reconectar)
+  // Contadores por etapa (diagnóstico: onde a mídia para, se parar).
+  const counters = { videoChunks: 0, audioFrames: 0, audioChunks: 0, audioDropped: 0, audioEncoderErrors: 0 };
 
   const open = () => ws && ws.readyState === WebSocket.OPEN;
 
@@ -162,6 +164,7 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
           encoder = new VideoEncoder({
             output: (chunk) => {
               if (open() && ws.bufferedAmount > SOCKET_BACKLOG && chunk.type !== 'key') { forceKey = true; return; }
+              counters.videoChunks++;
               send(packet(KIND_VIDEO, chunk.type === 'key', chunk.timestamp, chunk));
             },
             error: (e) => log('relay: encoder', e.message),
@@ -209,6 +212,7 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
       while (s.alive) {
         const { value: data, done } = await reader.read();
         if (done || !s.alive) { data?.close(); break; }
+        counters.audioFrames++;
         if (!encoder) {
           const cfg = {
             codec: 'opus',
@@ -220,10 +224,11 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
           if (!supported) { data.close(); unsupported('audio', 'codec'); break; }
           encoder = new AudioEncoder({
             output: (chunk) => {
-              if (open() && ws.bufferedAmount > SOCKET_BACKLOG) return;
+              if (open() && ws.bufferedAmount > SOCKET_BACKLOG) { counters.audioDropped++; return; }
+              counters.audioChunks++;
               send(packet(KIND_AUDIO, true, chunk.timestamp, chunk));
             },
-            error: (e) => log('relay: áudio', e.message),
+            error: (e) => { counters.audioEncoderErrors++; log('relay: áudio', e.message); },
           });
           s.closers.push(() => encoder.state !== 'closed' && encoder.close());
           encoder.configure(cfg);
@@ -300,5 +305,6 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     },
 
     get viewers() { return demand; },
+    get stats() { return { ...counters, demand, audioCfg }; },
   };
 }

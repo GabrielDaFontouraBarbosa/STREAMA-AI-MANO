@@ -172,11 +172,13 @@ async function setupAudio(cfg) {
   audioDecoder?.state !== 'closed' && audioDecoder?.close();
   audioDecoder = null;
   if (!cfg || typeof AudioDecoder === 'undefined') return;
+  stats.audioConfigs = (stats.audioConfigs ?? 0) + 1;
   markNoAudio(false);
   const conf = { codec: cfg.codec, sampleRate: cfg.sampleRate, numberOfChannels: cfg.numberOfChannels };
   const ok = await AudioDecoder.isConfigSupported(conf).then((r) => r.supported, () => false);
+  stats.audioSupported = ok;
   if (!ok) return;
-  audioDecoder = new AudioDecoder({ output: playAudio, error: () => { audioDecoder = null; } });
+  audioDecoder = new AudioDecoder({ output: playAudio, error: (e) => { stats.audioError = e?.message ?? 'erro'; audioDecoder = null; } });
   audioDecoder.configure(conf);
   if (!audioCtx || audioCtx.state !== 'running') $('#sound').hidden = false;
 }
@@ -291,7 +293,9 @@ function onPacket(buf) {
     // Decodificador ficou pra trás (aparelho fraco): zera e pede keyframe.
     if (videoDecoder.decodeQueueSize > 12) { resetVideoDecoder(); askKeyframe(); return; }
     videoDecoder.decode(new EncodedVideoChunk({ type: isKey ? 'key' : 'delta', timestamp, data }));
-  } else if (kind === KIND_AUDIO && audioDecoder?.state === 'configured') {
+  } else if (kind === KIND_AUDIO) {
+    stats.audioPackets = (stats.audioPackets ?? 0) + 1;
+    if (audioDecoder?.state !== 'configured') return;
     stats.audioChunks++;
     audioDecoder.decode(new EncodedAudioChunk({ type: 'key', timestamp, data }));
   }

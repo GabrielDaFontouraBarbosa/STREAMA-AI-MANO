@@ -63,7 +63,7 @@ describe('relay da Activity', { skip: skipReason }, () => {
       assert.equal(b.decoders, 1, `decoders de vídeo criados: ${b.decoders} (esperado 1)`);
       assert.ok(b.videoFrames > a.videoFrames + 10, `quadros parados: ${a.videoFrames} → ${b.videoFrames}`);
       if (!(b.audioChunks > a.audioChunks)) {
-        const hostDiag = await host.page.evaluate(() => window.__hostDiag);
+        const hostDiag = await host.page.evaluate(() => ({ ...window.__hostDiag, ...window.__pub?.stats }));
         assert.fail(`áudio não chegou — viewer: ${JSON.stringify(b)} | host: ${JSON.stringify(hostDiag)} | avisos do host: ${host.logs.join(' ; ') || 'nenhum'}`);
       }
 
