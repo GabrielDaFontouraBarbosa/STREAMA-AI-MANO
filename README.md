@@ -36,6 +36,11 @@ server/
 public/               a página (index.html, app.js, styles.css, sw.js)
 ```
 
+## Documentação
+
+- [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md): como o Blink funciona por dentro, limites e decisões.
+- [`docs/MELHORIAS.md`](docs/MELHORIAS.md): plano de melhorias (visual, uso, desempenho, bugs).
+
 ## Mini Blink (Discord)
 
 Bot que anuncia a live no Discord e deixa assistir **dentro do próprio
