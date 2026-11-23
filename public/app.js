@@ -220,10 +220,13 @@ function initials(name) {
   return (name || '?').trim().slice(0, 2).toUpperCase();
 }
 
-function setNet(state, label) {
+// Estado da sala no topo do painel. Antes de existir sala não há o que
+// mostrar: "Sem sala" e "offline" pareciam painel de desenvolvedor.
+function setNet(state, label = '') {
   const pill = $('#net-pill');
   pill.dataset.state = state;
   $('#net-label').textContent = label;
+  $('.console-head').hidden = state === 'idle';
 }
 
 /* Diagnóstico honesto em vez de engolir o erro em silêncio. */
@@ -402,20 +405,52 @@ const account = (function () {
     if (site.supportUrl) { support.href = site.supportUrl; support.hidden = false; }
   }
 
-  // Entrar (ou criar conta) com o Discord.
-  $('#auth-discord').onclick = async () => {
+  // Rodapé: a versão no ar, pelo /version (não toca no banco).
+  (async function footStatus() {
+    const el = $('#foot-status');
     try {
-      const r = await post('/api/auth/sign-in/social', {
-        provider: 'discord',
-        callbackURL: '/?discord=login',
-        newUserCallbackURL: '/?discord=novo',
-        errorCallbackURL: '/?discord=erro',
-      });
-      if (r.url) location.href = r.url;
-    } catch (err) {
-      errEl.textContent = err.message;
-      errEl.hidden = false;
+      const r = await fetch('/version', { cache: 'no-store' });
+      const v = await r.json();
+      el.textContent = `no ar · versão ${v.commit}`;
+    } catch {
+      el.textContent = 'sem resposta do servidor';
     }
+    el.hidden = false;
+  })();
+
+  // Entrar (ou criar conta) com o Discord.
+  async function signInDiscord() {
+    const r = await post('/api/auth/sign-in/social', {
+      provider: 'discord',
+      callbackURL: '/?discord=login',
+      newUserCallbackURL: '/?discord=novo',
+      errorCallbackURL: '/?discord=erro',
+    });
+    if (r.url) location.href = r.url;
+  }
+  $('#auth-discord').onclick = () => signInDiscord().catch((err) => showErr(err.message));
+
+  /* ── Menu da conta (no avatar) ──
+     Botão que mostra/esconde uma lista de botões comuns: sem role="menu",
+     que exigiria o modelo de teclado inteiro. Escape fecha e devolve o foco. */
+  const chip = $('#me-chip');
+  const menu = $('#account-menu');
+  function setMenu(open) {
+    menu.hidden = !open;
+    chip.setAttribute('aria-expanded', String(open));
+  }
+  chip.onclick = () => setMenu(menu.hidden);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || menu.hidden) return;
+    setMenu(false);
+    chip.focus();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !$('#account').contains(e.target)) setMenu(false);
+  });
+  $('#menu-copy-link').onclick = () => {
+    setMenu(false);
+    copy(`${location.origin}/@${me.username}`, 'Seu link foi copiado!');
   };
 
   async function load() {
@@ -430,15 +465,18 @@ const account = (function () {
     } catch { /* servidor dormindo / offline */ }
     renderDiscord();
 
-    $('#me-chip').hidden = !me;
-    $('#logout-btn').hidden = !me;
+    $('#account').hidden = !me;
     $('#login-btn').hidden = !!me;
     $('#signup-btn').hidden = !!me;
     $('#guest-note').hidden = !!me;
+    // Logado, a capa sai e o painel sobe (styles.css: body.signed-in).
+    document.body.classList.toggle('signed-in', !!me);
     if (me) {
       $('#me-name').textContent = me.name;
       $('#me-avatar').textContent = initials(me.name);
-      $('#me-chip').title = '@' + me.username;
+      chip.setAttribute('aria-label', `Sua conta: ${me.name}`);
+      $('#menu-name').textContent = me.name;
+      $('#menu-user').textContent = '@' + me.username;
     }
     return me;
   }
@@ -447,11 +485,12 @@ const account = (function () {
   function renderDiscord() {
     const btn = $('#discord-btn');
     btn.hidden = !me || !discord.enabled;
-    btn.textContent = discord.linked ? 'Discord ✓' : 'Conectar Discord';
-    btn.title = discord.linked ? 'Discord conectado — clique pra desconectar' : 'Conecte pra mandar suas lives no Discord';
+    $('#discord-label').textContent = discord.linked ? 'Desconectar Discord' : 'Conectar Discord';
+    btn.title = discord.linked ? 'Seu Discord está conectado' : 'Conecte pra mandar suas lives no Discord';
   }
 
   $('#discord-btn').onclick = async () => {
+    setMenu(false);
     try {
       if (discord.linked) {
         if (!confirm('Desconectar sua conta do Discord do Blink?')) return;
@@ -503,7 +542,7 @@ const account = (function () {
     return discord;
   }
 
-  return { get me() { return me; }, get discord() { return discord; }, load, open, refreshDiscord };
+  return { get me() { return me; }, get discord() { return discord; }, get site() { return site; }, load, open, refreshDiscord, signInDiscord };
 })();
 
 await account.load();
@@ -574,7 +613,6 @@ const social = (function () {
 /* ── Modo transmissor ──────────────────────────────────────── */
 
 const host = (function () {
-  const nameEl = $('#host-name');
   const serverEl = $('#host-server');
   const audioEl = $('#host-audio');
   const startBtn = $('#host-start');
@@ -592,9 +630,14 @@ const host = (function () {
   let stream = null;
   // Mini Blink: quem assiste pelo Discord recebe por WebSocket (lá não tem WebRTC).
   const relay = createRelayPublisher({
-    onViewers: (n) => { if (n > 0) chat.push('', `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'} pelo Discord.`, true); },
+    onViewers: (n) => {
+      discordViewers = n;
+      if (n > 0) chat.push('', `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'} pelo Discord.`, true);
+      showLive();
+    },
     log: (...a) => console.info(...a),
   });
+  let discordViewers = 0;
   let ws = null;
   let heartbeat = null;
   let roomCode = '';
@@ -613,9 +656,14 @@ const host = (function () {
   const sig = (msg) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
 
   serverEl.value = DEFAULT_WS;
-  // Logado, o nome vem da conta (o servidor ignora o que o cliente mandar).
-  $('#host-name-field').hidden = !!account.me;
-  nameEl.value = account.me?.name ?? prefs.read('name', '');
+  // Transmitir exige conta: sem ela, a aba já diz isso em vez de deixar a
+  // pessoa preencher tudo e só pedir login no clique final. O nome vem da
+  // conta (o servidor ignora o que o cliente mandar).
+  $('#host-guest').hidden = !!account.me;
+  setup.hidden = !account.me;
+  $('#host-guest-discord').hidden = !account.site.discordLogin;
+  $('#host-guest-discord').onclick = () => account.signInDiscord().catch((err) => toast(err.message, 'err', 5000));
+  $('#host-guest-login').onclick = () => account.open('login', 'Entre pra transmitir');
   audioEl.checked = prefs.read('audio', true);
 
   /* Qualidade. "Jogo ou vídeo" segura o FPS e deixa a resolução cair quando
@@ -702,7 +750,15 @@ const host = (function () {
   }
   const retuneAll = () => { for (const pc of peers.values()) tuneSender(pc); };
 
+  // "Ao vivo · 3 assistindo": quem está no navegador (P2P) + no Discord (relay).
+  function showLive() {
+    if (!roomCode || $('#net-pill').dataset.state !== 'live') return;
+    const n = peers.size + discordViewers;
+    setNet('live', n ? `ao vivo · ${n} assistindo` : 'ao vivo');
+  }
+
   function renderViewers() {
+    showLive();
     listEl.innerHTML = '';
     countEl.textContent = String(peers.size);
     if (!peers.size) {
@@ -822,7 +878,8 @@ const host = (function () {
           $('#room-tag').textContent = 'Sala ' + roomCode;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
           showSendDiscord();
-          setNet('live', 'no ar');
+          setNet('live', 'ao vivo');
+          showLive();
           chat.attach(sock);
           chat.push('', 'Sala aberta. Manda o código pra galera.', true);
           break;
@@ -832,7 +889,8 @@ const host = (function () {
           links = m.links || links;
           relay.start({ stream, roomCode, relayKey: m.relayKey });
           showSendDiscord();
-          setNet('live', 'no ar');
+          setNet('live', 'ao vivo');
+          showLive();
           chat.attach(sock);
           chat.push('', 'Conexão com o servidor voltou.', true);
           for (const v of m.viewers || []) await syncPeer(v.viewerId, v.name);
@@ -968,8 +1026,9 @@ const host = (function () {
     live.hidden = true;
     document.body.classList.remove('in-room');
     codeEl.textContent = '------';
-    $('#room-tag').textContent = 'Sem sala';
-    setNet('idle', 'offline');
+    discordViewers = 0;
+    $('#room-tag').textContent = '';
+    setNet('idle');
     chat.detach();
     micBtn.setAttribute('aria-pressed', 'false');
     micBtn.querySelector('use').setAttribute('href', '#i-mic');
@@ -1263,7 +1322,7 @@ const viewer = (function () {
     try { ws = new WebSocket(serverEl.value); } catch {
       toast('Endereço do servidor inválido.', 'err', 5000);
       if (joined) leave();
-      else { joinBtn.disabled = false; setNet('idle', 'offline'); }
+      else { joinBtn.disabled = false; setNet('idle'); }
       return;
     }
     const sock = ws;
@@ -1337,7 +1396,7 @@ const viewer = (function () {
           toast(m.message, 'err', 5000);
           if (joined) { leave(); break; }
           joinBtn.disabled = false;
-          setNet('idle', 'offline');
+          setNet('idle');
           ws = null;
           sock.close();
           break;
@@ -1350,7 +1409,7 @@ const viewer = (function () {
       clearInterval(heartbeat);
       if (!joined) {
         joinBtn.disabled = false;
-        setNet('idle', 'offline');
+        setNet('idle');
         toast('Não consegui falar com o servidor.', 'err');
         return;
       }
@@ -1406,8 +1465,8 @@ const viewer = (function () {
     setup.hidden = false;
     live.hidden = true;
     document.body.classList.remove('in-room');
-    $('#room-tag').textContent = 'Sem sala';
-    setNet('idle', 'offline');
+    $('#room-tag').textContent = '';
+    setNet('idle');
     chat.detach();
   }
 

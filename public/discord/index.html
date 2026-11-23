@@ -45,6 +45,8 @@
   .flag[hidden] { display: none; }
   #sound { position: fixed; bottom: calc(var(--saib) + 14px); left: 50%; transform: translateX(-50%); }
   #sound[hidden] { display: none; }
+  #sound { display: inline-flex; align-items: center; gap: 8px; }
+  .ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
   .actions { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .actions[hidden] { display: none; }
 </style>
@@ -69,7 +71,7 @@
     </div>
   </div>
 
-  <button id="sound" type="button" hidden>🔊 Ligar o som</button>
+  <button id="sound" type="button" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>Ligar o som</button>
 
   <script type="module" src="/discord/viewer.js"></script>
 </body>

@@ -1,6 +1,7 @@
 // App HTTP (Express): Better Auth em /api/auth/*, API do Blink em /api/*,
 // links diretos (/@username, /s/CODE) e os estáticos de public/.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -18,6 +19,7 @@ import { getBot } from './minibot.js';
 import { requestIp } from './client-ip.js';
 import { discoveryLimit } from './limits.js';
 import { securityHeaders } from './security-headers.js';
+import { pageMeta, renderPage } from './page-meta.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -240,12 +242,13 @@ export function createApp() {
   app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
 
   /* ── versão no ar ──────────────────────────────────────── */
-  // O Railway injeta RAILWAY_GIT_COMMIT_SHA no build; local responde "local".
+  // O commit vem do ambiente da hospedagem (Render: RENDER_GIT_COMMIT;
+  // Railway: RAILWAY_GIT_COMMIT_SHA); local responde "local".
   // Fora do /api e sem banco: tem que responder mesmo com o Postgres caído.
   app.get('/version', (req, res) => {
     res.set('Cache-Control', 'no-store').json({
       app: 'Blink',
-      commit: (process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0, 7),
+      commit: (process.env.RENDER_GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0, 7),
       bootedAt: BOOT_TIME,
     });
   });
@@ -268,10 +271,23 @@ export function createApp() {
   /* ── Activity do Discord ───────────────────────────────── */
   // Com o mapeamento "/" → Blink no portal do Discord, a Activity abre a raiz
   // com ?frame_id=...&instance_id=...: aí servimos a página do Mini Blink.
-  app.get('/', (req, res, next) => {
-    if (!req.query.frame_id) return next();
-    res.set('Cache-Control', 'no-cache');
-    res.sendFile(path.join(PUBLIC_DIR, 'discord', 'index.html'));
+  //
+  // Fora da Activity, a raiz sai com as meta tags montadas (page-meta.js):
+  // imagem e URL absolutas, e o título de convite quando vem com ?sala=.
+  const INDEX_HTML = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
+  const HOME_HTML = renderPage(INDEX_HTML, pageMeta({ publicUrl: config.publicUrl }));
+  app.get('/', (req, res) => {
+    if (req.query.frame_id) {
+      res.set('Cache-Control', 'no-cache');
+      return res.sendFile(path.join(PUBLIC_DIR, 'discord', 'index.html'));
+    }
+    const code = String(req.query.sala ?? '').toUpperCase();
+    if (ROOM_RE.test(code)) {
+      // Convite: não fica em cache nem vaza o código no Referer.
+      res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+      return res.type('html').send(renderPage(INDEX_HTML, pageMeta({ publicUrl: config.publicUrl, room: code })));
+    }
+    res.set('Cache-Control', 'no-cache').type('html').send(HOME_HTML);
   });
 
   /* ── estáticos ─────────────────────────────────────────── */

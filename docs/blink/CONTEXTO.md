@@ -48,15 +48,22 @@ do caderno 01:
 - `rate-limiter-flexible` (descoberta: 20/min por IP);
 - Helmet/CSP;
 - testes unitários e E2E;
-- CI no GitHub Actions.
+- CI no GitHub Actions;
+- front (MELHORIAS §1–2, caderno 05): textos sem promessa falsa, rodapé com
+  versão (`/version`), Open Graph absoluto e título de convite em `/?sala=`
+  (`server/src/page-meta.js`), "Entre para transmitir" antes das opções,
+  menu de conta no avatar, ícones SVG no lugar de emoji, "Sem sala/offline"
+  escondidos, cor `--live` só para "ao vivo", capa em 2 linhas no celular e
+  escondida para quem está logado.
 
 O CI do PR #4 achou um bug real: no Chromium 153, o som da Activity sumia
 porque o decoder Opus era configurado a 44,1 kHz. Corrigido (`audioDecoderConfig`
 em `player-logic.js`); os contadores por etapa do áudio ficaram no código.
 
 **Fila (adiado, com motivo em `MELHORIAS.md` §6):**
-- visual do caderno 05 (capa, textos, menu de conta, ícones SVG, cor do
-  "ao vivo", Open Graph, QR);
+- resto do visual do caderno 05: prévia em vídeo na capa, QR, textura no
+  fundo, estados vazios, "Navegador · N / Discord · N" na lista do host,
+  reações, aviso de "sem áudio" antes de publicar;
 - tickets/`run_id`;
 - fila do bot no Postgres;
 - recuperar senha (Resend; o Render grátis bloqueia SMTP);
@@ -156,6 +163,7 @@ em `player-logic.js`); os contadores por etapa do áudio ficaram no código.
 | Testar WebCodecs em `about:blank` | Não é contexto seguro; teste em `http://localhost`. |
 | Cookie jar que sobrescreve em vez de somar | Acumule os cookies por nome. |
 | `AudioDecoder` Opus pedido a 44,1 kHz | O `isConfigSupported()` diz "sim" e o `configure()` falha no Chromium 153 (som some calado). Opus decodifica sempre numa taxa nativa (48 kHz). Achado no CI, não aqui (Chromium 157): por isso o CI é obrigatório. |
+| Controle positivo que não controla nada (rodapé "abaixo da dobra" que cabia na tela) | O controle tem de usar a mesma medida num caso que sabidamente falha (ex.: a mesma tela com 480 px de altura). |
 | Prometer "tarefa agendada" para o início de sessão | Agendamento é por horário. Para "toda sessão", use o `CLAUDE.md`. |
 
 ---

@@ -39,13 +39,18 @@
   --txt:     #EFE9DE;  /* osso quente, 16:1 — tira a frieza de "painel técnico" */
   --txt-2:   #B3B7AE;  /* 9:1 */
   --txt-3:   #8C938B;  /* 6:1 — dicas */
-  --teal:    #1BA3B3;  /* ação, foco, AO VIVO */
+  --teal:    #1BA3B3;  /* ação e foco */
   --teal-up: #28CFE2;  /* hover e texto sobre teal escuro */
   --teal-lo: #11585F;  /* preenchimentos e anéis discretos */
   --on-teal: #07191D;  /* texto em cima do botão teal */
   --danger:  #E04D42;  /* só encerrar transmissão */
   --lilac:   #B9A8FF;  /* gente: amigos, espectadores, você */
   --lilac-lo: rgba(185, 168, 255, .14);
+  /* só "ao vivo": antes dividia o teal com botão e foco e os três se
+     confundiam. Rosa quente, longe do vermelho de encerrar (7:1 no fundo). */
+  --live:      #FF5FA8;
+  --live-lo:   rgba(255, 95, 168, .14);
+  --live-ring: rgba(255, 95, 168, .42);
 
   --r-card: 12px;
   --r:      6px;
@@ -135,12 +140,37 @@ img, video { max-width: 100%; }
 
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 
+/* conta: o avatar abre a lista (nome, @, Discord, link, sair) */
+.account { position: relative; }
 .me-chip {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 13px; color: var(--txt-2);
-  padding-right: 4px;
+  min-height: 44px; padding: 0 10px 0 6px;
+  background: none; border: 1px solid transparent; border-radius: 999px;
+  font: inherit; font-size: 13px; color: var(--txt-2); cursor: pointer;
 }
-.me-chip .avatar { width: 26px; height: 26px; font-size: 11px; }
+.me-chip:hover, .me-chip[aria-expanded="true"] { border-color: var(--line-2); color: var(--txt); }
+.me-chip .avatar { width: 28px; height: 28px; font-size: 11px; }
+.account-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
+  min-width: 232px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: var(--r-card); box-shadow: var(--shadow);
+  animation: paneIn .18s var(--ease) both;
+}
+.account-id {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 10px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--line);
+}
+.account-id strong { font-size: 14px; color: var(--txt); }
+.account-id .mono { font-size: 12px; color: var(--txt-3); }
+.menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 44px; padding: 0 10px;
+  background: none; border: 0; border-radius: var(--r);
+  font: inherit; font-size: 14px; color: var(--txt); text-align: left; cursor: pointer;
+}
+.menu-item:hover { background: var(--panel-2); }
+.menu-item .ic { color: var(--txt-3); }
 
 /* ── 4. Botões ─────────────────────────────────────────────── */
 
@@ -244,6 +274,21 @@ h1 {
   font-size: 18px; line-height: 1.6; color: var(--txt-2);
 }
 
+/* Celular: o título cabe em 2 linhas e o botão de entrar aparece sem rolar
+   (critério do caderno 05, em 390 × 844). */
+@media (max-width: 560px) {
+  .page { padding-top: 28px; gap: 28px; }
+  /* medido: "Sua tela, ao vivo, pra geral." cabe em 2 linhas com a fonte
+     até ~1/10 da largura útil (390 px → 36 px; 360 px → 32 px) */
+  .blink-title { font-size: clamp(26px, calc((100vw - 32px) / 10.5), 36px); }
+  .blink-title .br-wide { display: none; }
+  .lede { margin-top: 16px; font-size: 16px; line-height: 1.5; }
+}
+
+/* Logado: a capa sai e o painel abre direto. */
+body.signed-in:not(.in-room) .hero { display: none; }
+body.signed-in:not(.in-room) .page { grid-template-columns: minmax(0, 560px); justify-content: center; }
+
 
 /* ── 6. Painel (console) ───────────────────────────────────── */
 
@@ -291,7 +336,7 @@ h1 {
 #net-label { display: inline-block; }
 #net-label::first-letter { text-transform: uppercase; }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-.pill[data-state="live"] { color: var(--teal-up); background: rgba(27, 163, 179, .15); box-shadow: inset 0 0 0 1px rgba(27, 163, 179, .4); }
+.pill[data-state="live"] { color: var(--live); background: var(--live-lo); box-shadow: inset 0 0 0 1px var(--live-ring); }
 .pill[data-state="live"] .pill-dot { animation: pulse 1.6s ease-in-out infinite; }
 .pill[data-state="wait"] { color: var(--txt-2); box-shadow: inset 0 0 0 1px var(--line-2); }
 .pill[data-state="wait"] .pill-dot { animation: pulse .9s ease-in-out infinite; }
@@ -413,14 +458,14 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 }
 .stage-badge { position: absolute; left: 12px; top: 12px; z-index: 2; display: flex; align-items: center; gap: 8px; }
 
-/* AO VIVO é teal — vermelho é só destrutivo */
+/* AO VIVO tem cor própria (--live); vermelho é só destrutivo */
 .live-tag {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 8px; border-radius: var(--r-chip);
-  background: rgba(27, 163, 179, .15); box-shadow: inset 0 0 0 1px rgba(27, 163, 179, .4);
-  font-size: 12px; font-weight: 600; color: var(--teal-up);
+  background: var(--live-lo); box-shadow: inset 0 0 0 1px var(--live-ring);
+  font-size: 12px; font-weight: 600; color: var(--live);
 }
-.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal-up); animation: pulse 1.6s ease-in-out infinite; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.6s ease-in-out infinite; }
 .stage-note {
   padding: 4px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55);
   backdrop-filter: blur(6px);
@@ -534,7 +579,7 @@ li.empty:hover { background: none; }
 
 .friend-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line-2); }
 .friend-dot[data-status="online"] { background: var(--lilac); }
-.friend-dot[data-status="live"] { background: var(--teal-up); animation: pulse 1.6s ease-in-out infinite; }
+.friend-dot[data-status="live"] { background: var(--live); animation: pulse 1.6s ease-in-out infinite; }
 .friend-name { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .friend-sub { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--txt-3); }
 .viewer-list .avatar, .friend-list .avatar, .me-chip .avatar, .request-list .avatar { background: var(--lilac-lo); color: var(--lilac); }
@@ -554,6 +599,12 @@ li.empty:hover { background: none; }
 .add-friend .btn { margin-top: 12px; }
 
 .guest-box p { margin: 0 0 16px; font-size: 14px; color: var(--txt-2); }
+
+/* Transmitir sem conta: a entrada vem antes das opções */
+.host-guest > * + * { margin-top: 12px; }
+.host-guest-title { font-family: var(--display); font-size: 26px; font-weight: 850; font-stretch: 118%; line-height: 1.05; }
+.host-guest p { margin-bottom: 20px; font-size: 14px; line-height: 1.55; color: var(--txt-2); }
+.host-guest .host-guest-alt { margin: 16px 0 0; text-align: center; }
 
 /* ── 10. Chat ──────────────────────────────────────────────── */
 
@@ -609,6 +660,7 @@ body.in-room .stage { max-height: calc(100svh - 250px); }
   font-size: 13px; color: var(--txt-3);
 }
 .foot .mono { font-size: 11px; }
+.foot-status { color: var(--txt-3); }
 
 /* ── 13. Avisos ────────────────────────────────────────────── */
 
@@ -696,7 +748,7 @@ body.in-room .stage { max-height: calc(100svh - 250px); }
 .auth-discord { margin: 18px 0 4px; }
 .auth-discord[hidden] { display: none; }
 .auth-or { display: block; text-align: center; margin: 14px 0 18px; }
-.support-link { color: var(--teal-up); text-decoration: none; font-weight: 600; }
+.support-link { display: inline-flex; align-items: center; gap: 6px; color: var(--teal-up); text-decoration: none; font-weight: 600; }
 .support-link:hover { text-decoration: underline; }
 .support-link[hidden] { display: none; }
 
@@ -711,8 +763,9 @@ body.in-room .stage { max-height: calc(100svh - 250px); }
 .stage-flag[hidden] { display: none; }
 .unmute-cta {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 3;
+  display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 20px; border: 0; border-radius: 999px;
-  background: var(--teal-up, #1ba3b3); color: #061014;
+  background: var(--teal-up); color: var(--on-teal);
   font: inherit; font-weight: 700; font-size: 15px; cursor: pointer;
   box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
 }
