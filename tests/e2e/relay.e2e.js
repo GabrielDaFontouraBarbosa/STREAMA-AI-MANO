@@ -23,10 +23,12 @@ describe('relay da Activity', { skip: skipReason }, () => {
   async function newHost(opts) {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
+    const logs = [];
+    page.on('console', (m) => { if (m.text().includes('[relay]')) logs.push(m.text()); });
     await page.goto(server.base + '/');
     assert.equal(await signUp(page, uniqueUser('relay')), 200);
     const room = await hostRelay(page, opts);
-    return { ctx, page, room };
+    return { ctx, page, room, logs };
   }
 
   async function newViewer(code) {
@@ -60,7 +62,10 @@ describe('relay da Activity', { skip: skipReason }, () => {
 
       assert.equal(b.decoders, 1, `decoders de vídeo criados: ${b.decoders} (esperado 1)`);
       assert.ok(b.videoFrames > a.videoFrames + 10, `quadros parados: ${a.videoFrames} → ${b.videoFrames}`);
-      assert.ok(b.audioChunks > a.audioChunks, 'áudio não chegou');
+      if (!(b.audioChunks > a.audioChunks)) {
+        const hostDiag = await host.page.evaluate(() => window.__hostDiag);
+        assert.fail(`áudio não chegou — viewer: ${JSON.stringify(b)} | host: ${JSON.stringify(hostDiag)} | avisos do host: ${host.logs.join(' ; ') || 'nenhum'}`);
+      }
 
       const seen = new Set();
       for (let i = 0; i < 20 && seen.size < 2; i++) {

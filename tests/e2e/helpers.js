@@ -138,8 +138,14 @@ export async function hostRelay(page, { audio = true, forceNoCodec = false } = {
       tracks.push(...dst.stream.getAudioTracks());
     }
     const stream = new MediaStream(tracks);
+    window.__hostDiag = {
+      audioTracks: stream.getAudioTracks().length,
+      audioEncoder: typeof AudioEncoder,
+      audioContext: audio ? 'running' : 'off',
+    };
     const { createRelayPublisher } = await import('/relay-host.js');
-    window.__pub = createRelayPublisher({ log: () => {} });
+    // Os avisos do publicador vão pro console: o teste guarda pra explicar falhas.
+    window.__pub = createRelayPublisher({ log: (...a) => console.log('[relay]', ...a) });
     window.__pub.start({ stream, roomCode: room.roomCode, relayKey: room.relayKey });
     return { roomCode: room.roomCode, relayKey: room.relayKey };
   }, { audio, forceNoCodec });
