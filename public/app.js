@@ -480,7 +480,8 @@ const account = (function () {
     const error = p.get('error') || '';
     p.delete('discord');
     p.delete('error');
-    history.replaceState(null, '', location.pathname + (p.size ? `?${p}` : ''));
+    const rest = p.toString(); // não p.size: não existe no Safari antigo
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
     const notLinked = /account_not_linked|not_linked/i.test(error);
     setTimeout(() => {
       if (status === 'ok') toast('Discord conectado!', 'ok', 5000);

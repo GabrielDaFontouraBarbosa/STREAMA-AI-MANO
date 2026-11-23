@@ -1,19 +1,15 @@
 // Ponte com o Mini Blink (bot do Discord): o bot avisa "a Activity aberta
-// na instância X / canal Y é da sala Z", e a página da Activity pergunta
-// qual sala abrir. Tudo em memória — some com a sala ou em 12h.
+// na instância X é da sala Z", e a página da Activity pergunta qual sala
+// abrir. Tudo em memória — some com a sala ou em 12h (activity-links.js).
 
 import crypto from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { config } from './config.js';
 import { db, schema } from './db/index.js';
 import { isRoomOpen } from './signaling.js';
+import { createActivityLinks } from './activity-links.js';
 
-const TTL_MS = 12 * 60 * 60 * 1000;
-const ID_RE = /^\d{5,25}$|^[A-Za-z0-9_-]{5,100}$/;
-const ROOM_RE = /^[0-9A-F]{6}$/;
-
-const byInstance = new Map(); // instanceId → { code, at }
-const byChannel = new Map();  // channelId  → { code, at }
+const links = createActivityLinks({ isOpen: isRoomOpen });
 
 // ID do Discord vinculado à conta do Blink (null se não vinculou).
 export async function discordIdOf(userId) {
@@ -36,28 +32,5 @@ export function secretOk(header) {
   return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
 
-function sweep() {
-  const now = Date.now();
-  for (const m of [byInstance, byChannel]) {
-    for (const [k, v] of m) if (now - v.at > TTL_MS || !isRoomOpen(v.code)) m.delete(k);
-  }
-}
-
-export function link({ code, instanceId, channelId }) {
-  code = String(code ?? '').toUpperCase();
-  if (!ROOM_RE.test(code)) return false;
-  sweep();
-  const at = Date.now();
-  if (instanceId && ID_RE.test(instanceId)) byInstance.set(String(instanceId), { code, at });
-  if (channelId && ID_RE.test(channelId)) byChannel.set(String(channelId), { code, at });
-  return true;
-}
-
-// Instância é a pista mais exata (veio do botão); canal é o plano B.
-export function resolve({ instanceId, channelId }) {
-  for (const [m, id] of [[byInstance, instanceId], [byChannel, channelId]]) {
-    const hit = id && m.get(String(id));
-    if (hit && Date.now() - hit.at <= TTL_MS && isRoomOpen(hit.code)) return hit.code;
-  }
-  return null;
-}
+export const link = (args) => links.link(args);
+export const resolve = (args) => links.resolve(args);

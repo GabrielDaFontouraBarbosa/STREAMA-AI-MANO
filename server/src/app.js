@@ -1,7 +1,6 @@
 // App HTTP (Express): Better Auth em /api/auth/*, API do Blink em /api/*,
 // links diretos (/@username, /s/CODE) e os estáticos de public/.
 
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -16,6 +15,9 @@ import { getIceServers, turnConfigured } from './turn.js';
 import { isRoomOpen } from './signaling.js';
 import * as discord from './discord.js';
 import { getBot } from './minibot.js';
+import { requestIp } from './client-ip.js';
+import { discoveryLimit } from './limits.js';
+import { securityHeaders } from './security-headers.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const ROOM_RE = /^[0-9A-F]{6}$/;
@@ -35,28 +37,22 @@ async function requireAuth(req, res, next) {
   next();
 }
 
-// IP de quem chamou, pro limite de tentativas do login. Só vale um cabeçalho
-// que o PROXY escreve, nunca um que o visitante consiga mandar:
-// - config.clientIpHeader (CLIENT_IP_HEADER; no Render, cf-connecting-ip:
-//   a Cloudflare na frente do Render sobrescreve esse cabeçalho a cada pedido);
-// - senão req.ip do Express com "trust proxy": o último salto do
-//   X-Forwarded-For, que é o que o proxy acrescentou. O começo da lista o
-//   visitante inventa (o Render só acrescenta, não limpa).
+// IP de quem chamou, pro limite de tentativas (login e descoberta de salas).
+// A regra fica em client-ip.js: só vale o que o proxy escreve.
 export function clientIp(req) {
-  const strip = (ip) => String(ip ?? '').trim().replace(/^::ffff:/, '');
-  if (config.clientIpHeader) {
-    const ip = strip(String(req.headers[config.clientIpHeader] ?? '').split(',')[0]);
-    if (net.isIP(ip)) return ip;
-  }
-  const ip = strip(req.ip || req.socket?.remoteAddress);
-  return net.isIP(ip) ? ip : '0.0.0.0';
+  return requestIp(req, config.clientIpHeader);
 }
 
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 export function createApp() {
   const app = express();
+  // Testar códigos de sala em sequência: mesma cota que viewer-join e /relay/view.
+  // O bot (MINI_BLINK_SECRET) consulta salas o tempo todo e fica de fora.
+  const discovery = discoveryLimit({ ipOf: clientIp, trusted: (req) => discord.secretOk(req.get('authorization')) });
   app.disable('x-powered-by');
+  // CSP e companhia; a Activity do Discord tem política própria (sem frame-ancestors).
+  app.use(securityHeaders({ publicDir: PUBLIC_DIR, publicUrl: config.publicUrl, trustedOrigins: config.trustedOrigins }));
   app.set('trust proxy', 1); // Railway fica na frente
 
   // IP real de quem chamou, pro limite de tentativas do login. Atrás do proxy
@@ -114,7 +110,7 @@ export function createApp() {
   /* ── status de sala ────────────────────────────────────── */
   // Só diz se a sala está no ar. Quem tem o código já consegue assistir, então
   // isso não revela nada novo. Usado pelo Mini Blink (bot do Discord).
-  app.get('/api/rooms/:code', (req, res) => {
+  app.get('/api/rooms/:code', discovery, (req, res) => {
     const code = String(req.params.code).toUpperCase();
     if (!ROOM_RE.test(code)) return res.status(400).json({ error: 'invalid_code' });
     res.json({ code, open: isRoomOpen(code) });
@@ -125,7 +121,7 @@ export function createApp() {
   app.post('/api/discord/link', (req, res) => {
     if (!discord.secretOk(req.get('authorization'))) return res.status(401).json({ error: 'unauthorized' });
     const ok = discord.link({
-      code: req.body?.code, instanceId: req.body?.instanceId, channelId: req.body?.channelId,
+      code: req.body?.code, instanceId: req.body?.instanceId,
     });
     res.status(ok ? 200 : 400).json({ ok });
   });
@@ -163,8 +159,8 @@ export function createApp() {
   }));
 
   // A Activity pergunta qual sala abrir.
-  app.get('/api/discord/room', (req, res) => {
-    const code = discord.resolve({ instanceId: req.query.instance, channelId: req.query.channel });
+  app.get('/api/discord/room', discovery, (req, res) => {
+    const code = discord.resolve({ instanceId: req.query.instance });
     res.json({ code });
   });
 

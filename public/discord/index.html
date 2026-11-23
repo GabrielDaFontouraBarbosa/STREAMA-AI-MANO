@@ -39,6 +39,10 @@
   button { padding: 10px 14px; border-radius: 10px; border: 0; background: var(--live); color: #fff;
     font: inherit; font-weight: 700; cursor: pointer; }
   button.ghost { background: #2a2a35; }
+  .flag { position: fixed; top: calc(var(--sait) + 10px); right: calc(var(--sair) + 10px);
+    padding: 4px 10px; border-radius: 999px; background: rgba(10,10,14,.8); color: #ffd27a;
+    font-weight: 600; font-size: 12px; }
+  .flag[hidden] { display: none; }
   #sound { position: fixed; bottom: calc(var(--saib) + 14px); left: 50%; transform: translateX(-50%); }
   #sound[hidden] { display: none; }
   .actions { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
@@ -48,6 +52,7 @@
 <body>
   <div id="stage"><canvas id="screen" aria-label="Live"></canvas></div>
   <div id="badge">AO VIVO</div>
+  <div id="noaudio" class="flag" hidden>Live sem som</div>
 
   <div id="panel">
     <div class="card">
@@ -59,6 +64,7 @@
       </form>
       <div class="actions" id="actions" hidden>
         <button class="ghost" id="open-browser" type="button">Abrir no navegador</button>
+        <button class="ghost" id="retry-video" type="button" hidden>Tentar de novo</button>
       </div>
     </div>
   </div>

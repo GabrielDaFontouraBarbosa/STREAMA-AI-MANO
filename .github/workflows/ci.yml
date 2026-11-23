@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  unit:
+    name: Unitários + bot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci --prefix server
+      - run: npm ci --prefix mini-blink
+      - run: npm test
+
+  e2e:
+    name: Ponta a ponta (Chromium + Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: blink_test
+          POSTGRES_USER: blink
+          # Banco descartável do job: sem senha (só existe durante o CI).
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U blink -d blink_test"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://blink@localhost:5432/blink_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci --prefix server --omit=dev
+      - run: npm ci --prefix mini-blink --omit=dev
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

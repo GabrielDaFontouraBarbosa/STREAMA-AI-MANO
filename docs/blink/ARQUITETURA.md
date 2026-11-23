@@ -1,22 +1,40 @@
 # Blink — Arquitetura
 
-Documento técnico para quem vai manter ou evoluir o Blink. Descreve o que o
-sistema faz, por que foi desenhado assim, onde estão os limites e o que muda
-quando ele crescer. Os números e nomes citados batem com o código de
-`master` (commit do PR #3).
+Documento técnico para quem vai manter ou evoluir o Blink. A descrição de
+partida foi escrita a partir de `master` no PR #3, segundo o autor do anexo.
+Esta revisão de 23/11/2026 confronta aquela descrição com a documentação
+dos provedores e com os requisitos do plano. O checkout, o lockfile e a
+telemetria do produto não acompanharam os arquivos. Confirmar no primeiro PR
+os comportamentos descritos como existentes.
+
+## Mapa de leitura
+
+| Decisão | Documento de execução |
+|---|---|
+| Sequência de PRs e prompt inicial | [MELHORIAS.md](MELHORIAS.md) |
+| Frameworks e bibliotecas | [01_ESCOLHAS_TECNICAS.md](01_ESCOLHAS_TECNICAS.md) |
+| Contratos de acesso e retomada | [02_SALAS_E_ACESSO.md](02_SALAS_E_ACESSO.md) |
+| Mídia no navegador e no Discord | [03_WEBRTC_DO_HOST.md](03_WEBRTC_DO_HOST.md) e [04_RELAY_E_ACTIVITY.md](04_RELAY_E_ACTIVITY.md) |
+| Interface e publicação de assets | [05_FRONTEND_E_PWA.md](05_FRONTEND_E_PWA.md) |
+| Persistência, contas e bot | [06_DADOS_CONTAS_E_BOT.md](06_DADOS_CONTAS_E_BOT.md) |
+| Testes e operação | [07_TESTES_E_OPERACAO.md](07_TESTES_E_OPERACAO.md) |
+| Receita, escala e orçamento em reais | [08_MONETIZACAO_E_ESCALA.md](08_MONETIZACAO_E_ESCALA.md) |
+
+Os valores numéricos nas seções 4–8 descrevem a base relatada, salvo indicação
+de proposta. Os contratos de atualização estão nos cadernos vinculados.
 
 ---
 
 ## 1. Resumo em um parágrafo
 
 O Blink é um app de transmissão de tela/câmera para grupos pequenos. A mídia
-trafega **ponto a ponto via WebRTC (topologia mesh)**; o servidor é só o
-**plano de controle**: autenticação, sinalização, presença, amizades e
-notificações. A exceção é quem assiste **dentro do Discord**: as Activities
-proíbem WebRTC, então para esse público o host codifica com **WebCodecs** e o
-servidor faz **relay por WebSocket**. Tudo roda num **único processo Node.js**
+trafega por **WebRTC em mesh** no navegador. Quando ICE seleciona TURN, esse
+provedor também transporta a mídia. O Node cuida de autenticação, sinalização,
+presença, amizades e notificações. Para quem assiste **dentro do Discord**, o
+host codifica com **WebCodecs** e o Node distribui por **WebSocket**, transporte
+suportado pelo proxy da Activity. Tudo roda num **único processo Node.js**
 (HTTP + WebSocket + bot do Discord), com **Postgres** para estado durável e
-**memória** para estado efêmero (salas).
+**memória** para estado efêmero (salas). [Discord Networking](https://docs.discord.com/developers/activities/development-guides/networking)
 
 ---
 
@@ -24,8 +42,8 @@ servidor faz **relay por WebSocket**. Tudo roda num **único processo Node.js**
 
 | Princípio | Consequência no código |
 |---|---|
-| **Servidor fora do caminho da mídia** | Custo de banda ~zero no caso comum; cabe em plano grátis. O preço é o limite do mesh (seção 6). |
-| **Um processo, uma porta** | `server/index.js` sobe Express, a sinalização (`ws`), o relay e o bot. Deploy trivial; escala vertical apenas. |
+| **Servidor fora do caminho da mídia** | O caminho direto poupa egress de mídia no Blink. TURN e relay WS têm medidores próprios; consultar o caderno 08 para orçar. |
+| **Um processo, uma porta** | `server/index.js` sobe Express, a sinalização (`ws`), o relay e o bot. Deploy em um serviço. A escala horizontal exige um dono por sala e roteamento de conexões. |
 | **Estado efêmero em memória, durável no banco** | Salas (`rooms`), relay e presença vivem em `Map`s. Contas, amizades, histórico de lives e inscrições de push vivem no Postgres. |
 | **Sem build no front** | `public/` é servido como está: HTML/CSS/JS ES modules. A única dependência empacotada é o SDK do Discord (`public/discord/sdk.js`, gerado por esbuild). |
 | **Degradar em vez de quebrar** | Sem TURN cai para STUN; sem VAPID o push desliga; sem token do Discord o bot não sobe; sem WebCodecs a Activity manda abrir no navegador. |
@@ -35,36 +53,17 @@ servidor faz **relay por WebSocket**. Tudo roda num **único processo Node.js**
 ## 3. Topologia
 
 ```mermaid
-flowchart LR
-  subgraph Navegadores
-    H[Host<br/>app.js + relay-host.js]
-    V[Amigo no navegador<br/>app.js]
-    D[Amigo no Discord<br/>Activity: discord/viewer.js]
-  end
-
-  subgraph Render["Processo único (Render)"]
-    E[Express<br/>API + estáticos]
-    A[Better Auth]
-    S[Sinalização WS<br/>signaling.js]
-    R[Relay WS<br/>relay.js]
-    B[Bot Mini Blink<br/>discord.js]
-  end
-
-  N[(Neon Postgres)]
-  CF[Cloudflare TURN]
-  DC[Discord API / Gateway]
-
-  H -- "WebRTC (mídia P2P)" --> V
-  H -- "offer/answer/ICE, chat" --> S
-  V -- "offer/answer/ICE, chat" --> S
-  H -- "H.264/VP8 + Opus (WS)" --> R
-  R -- "WS via proxy do Discord" --> D
-  E --- A
-  A --- N
-  E --- N
-  E -- "credencial TURN temporária" --> CF
-  B --- DC
-  H & V -. "relay quando P2P falha" .- CF
+flowchart TD
+  H["Host no navegador"] -->|"Sinalização e presença"| C["Node com Express e ws"]
+  V["Viewer no navegador"] -->|"Sinalização"| C
+  H -->|"WebRTC direto"| V
+  H -->|"ICE selecionou relay"| T["TURN"]
+  T -->|"WebRTC"| V
+  H -->|"Uma codificação por live"| R["Relay WS no processo Node"]
+  R -->|"Cópia por conexão"| D["Activity no Discord"]
+  C --> P["Postgres"]
+  C --> B["Bot Mini Blink"]
+  B --> A["API do Discord"]
 ```
 
 ---
@@ -147,8 +146,10 @@ stateDiagram-v2
 - **Código**: 3 bytes aleatórios em hex (6 caracteres, ~16,7 mi combinações).
 - **Queda não derruba a sala**: como a mídia é P2P, o vídeo continua mesmo
   com o WebSocket caído. Host e viewers têm `GRACE_MS = 45 s` para voltar
-  (`*-resume`). Se o **processo** reiniciou, `host-resume` recria a sala com
-  o **mesmo código**, e quem estava assistindo reconecta sozinho.
+  (`*-resume`). O anexo descreve recriação com o mesmo código após reinício. Confirmar
+  como o dono é provado e como o histórico é conciliado com
+  `closeDanglingStreams()`. A retomada proposta no caderno 02 usa execução,
+  proprietário, geração e prazo residual persistido.
 - **Heartbeat**: ping a cada 30 s; conexão sem pong é derrubada.
 - **Limites**: 50 viewers por sala, nome com 24 caracteres, chat com 300,
   payload de 256 KB.
@@ -180,9 +181,8 @@ os amigos, e dispara Web Push quando alguém entra ao vivo.
 
 - **Orçamento de upload**: `UPLOAD_BUDGET_KBPS = 12000` dividido pelo número
   de peers, com piso de 500 kbps (`tuneSender`). Cada viewer novo reduz o
-  bitrate dos outros. Esse é o limite físico do mesh.
-- **Troca de fonte** (tela ↔ câmera) usa `replaceTrack`: sem renegociação e
-  sem corte para quem assiste.
+  bitrate dos outros. Com mais de 24 peers, só o piso de vídeo já excede 12 Mbps. O caderno 03 inclui reserva de áudio/relay e uma regra que cabe no orçamento.
+- **Troca de fonte** (tela ↔ câmera) usa `replaceTrack`. O caso compatível preserva o peer; mudança fora do envelope negociado pode exigir renegociação. [MDN](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
 - **Captura**: `getDisplayMedia` com no máximo 1080p, áudio sem
   cancelamento de eco nem supressão de ruído (estragam música/jogo),
   `systemAudio: 'include'` e `selfBrowserSurface: 'exclude'`.
@@ -211,19 +211,21 @@ sequenceDiagram
 ```
 
 - **Codificação sob demanda**: o host só codifica enquanto `demand > 0`.
-  Com zero viewers no Discord, custo zero.
-- **Captura em segundo plano**: `MediaStreamTrackProcessor` continua
-  entregando frames com a aba escondida (o host está no jogo), ao contrário
-  de `requestAnimationFrame`/timers.
-- **Codec**: H.264 baseline (`avc1.42E01F`, Annex B) primeiro, porque
-  decodifica em tudo, iPhone incluso; depois VP8 e VP9. Áudio em Opus 96 kbps.
+  Com zero viewers no Discord, o encoder pode parar. Conexões de controle e infraestrutura ainda têm custo.
+- **Captura em segundo plano.** O caminho relatado usa
+  `MediaStreamTrackProcessor`. Verificar sua exposição em janela ou worker
+  e medir continuidade de frames com a aba oculta nos clientes suportados.
+  [MDN](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackProcessor)
+- **Codec**: H.264 baseline (`avc1.42E01F`, Annex B) primeiro, como
+  primeira tentativa, seguido por VP8 e VP9. Consultar capacidades reais do
+  encoder e decoder por configuração, inclusive em aparelho móvel. [WebCodecs](https://www.w3.org/TR/webcodecs/) Áudio em Opus 96 kbps.
 - **Saída**: até 1280×720, 30 fps, 2 Mbps; keyframe a cada 2 s ou sob pedido.
 - **Formato do pacote**: `[tipo:1][flags:1][timestamp µs float64 BE:8][dados]`.
 - **Backpressure por viewer**: acima de 1,5 MB em buffer, descarta vídeo até
   o próximo keyframe e pede um; acima de 8 MB, derruba a conexão. O áudio
-  continua passando.
+  continua passando até o limite de desconexão.
 - **Autorização**: publicar exige `key = HMAC(authSecret, "relay:"+código)`,
-  entregue só ao host pela sinalização. É sem estado e sobrevive a reinício.
+  entregue só ao host pela sinalização. Na base descrita, essa chave é estável para o mesmo código e segredo. A proposta usa ticket vinculado à execução e à geração.
 - **Limites**: 20 viewers por sala; pacote do host até 1 MB.
 
 ### 4.8 Mini Blink: bot do Discord (`mini-blink/`, `server/src/minibot.js`)
@@ -259,7 +261,7 @@ instalado na tela inicial.
 | Peça | Onde | Observação |
 |---|---|---|
 | App | Render (Docker, plano grátis) | `Dockerfile` instala `server/` e `mini-blink/` (só produção). |
-| Banco | Neon (Postgres) | Grátis e sem expirar; o Postgres grátis do Render expira. |
+| Banco | Neon (Postgres) | Plano conforme uso e cotas vigentes. Fazer sizing com CU-h e armazenamento. [Neon](https://neon.com/docs/introduction/plans) |
 | TURN | Cloudflare Realtime | Opcional. Sem ele, NAT simétrico fica em "Sintonizando…". |
 | Discord | App com Bot + Activities + OAuth2 | URL mapping `/` → host do Blink; redirect `…/api/auth/callback/discord`. |
 | Local | `docker compose` | `db` + `app` + túnel Cloudflare opcional (profiles `quick`/`named`). |
@@ -273,10 +275,10 @@ Variáveis: ver `.env.example` (raiz) e `mini-blink/.env.example`.
 | Limite | Por quê | Saída |
 |---|---|---|
 | **~5 viewers no navegador** | Mesh: o upload do host é dividido por N. Com 12 Mbps e 5 viewers, ~2,4 Mbps cada. | **SFU** (LiveKit, mediasoup): o host sobe uma vez e o servidor distribui. Muda o custo de banda. |
-| **20 viewers no Discord** | Relay em processo, ~2 Mbps por viewer saindo do servidor. | Mover o relay para um serviço próprio, ou servir o Discord a partir do SFU. |
-| **Uma instância só** | Salas, presença e relay são `Map`s em memória. Duas réplicas não se enxergam. | Redis (pub/sub + estado de sala) ou sticky sessions por código de sala. |
-| **Estado do bot em arquivo** | `lives.json` some no redeploy. | Tabela `discord_lives` no Postgres. |
-| **Plano grátis do Render** | ~750 h/mês; o serviço sempre acordado consome quase tudo. A banda do relay também conta. | Plano pago ou VPS quando houver uso real. |
+| **20 viewers no Discord** | Relay em processo, ~2 Mbps por viewer saindo do servidor. | Isolar o relay se a carga afetar o controle. Se houver SFU, prever ponte para o transporte aceito pela Activity. |
+| **Uma instância só** | Salas, presença e relay são `Map`s em memória. Duas réplicas não se enxergam. | Definir propriedade, presença entre nós, fan-out, roteamento e expiração. Afinidade isolada não compartilha estado nem resolve o failover. |
+| **Estado do bot em arquivo** | `lives.json` some no redeploy. | Tabela `discord_lives` no Postgres e fila com reconciliação do recibo. |
+| **Plano grátis do Render** | Horas e egress têm franquias próprias por workspace; respostas WebSocket públicas entram na banda. [Render](https://render.com/docs/outbound-bandwidth) | Plano pago ou VPS quando houver uso real. |
 
 ---
 
@@ -305,8 +307,7 @@ Variáveis: ver `.env.example` (raiz) e `mini-blink/.env.example`.
 Atrás do Render, o `X-Forwarded-For` **não é limpo**, só acrescido; o começo
 da lista é do visitante. O app grava `x-blink-client-ip` a partir de:
 
-1. `CLIENT_IP_HEADER`: no Render, por padrão `cf-connecting-ip`, porque a
-   Cloudflare na frente do Render sobrescreve esse cabeçalho;
+1. `CLIENT_IP_HEADER`: no Render, por padrão `cf-connecting-ip`, conforme a topologia descrita pelo autor. Validar se o caminho real garante a origem do header e impede ingresso por caminhos alternativos;
 2. senão, `req.ip` do Express com `trust proxy = 1`, o último salto.
 
 O Better Auth lê só esse cabeçalho (`advanced.ipAddress.ipAddressHeaders`).
@@ -340,7 +341,18 @@ O Better Auth lê só esse cabeçalho (`advanced.ipAddress.ipAddressHeaders`).
 |---|---|---|
 | Mesh P2P | SFU desde o início | Custo zero e simplicidade para grupos de amigos. |
 | Processo único | Microserviços | Hospedagem grátis e deploy trivial. |
-| Relay WebCodecs + WS só para o Discord | HLS de baixa latência | ~0,3 s contra vários segundos de atraso, e reaproveita o WS. |
-| WebCodecs no viewer | MSE | iOS não tem MSE dentro de webview; WebCodecs existe. |
-| Neon para o banco | Postgres do Render | O Postgres grátis do Render expira. |
-| Bot dentro do Blink | Serviço separado | As ~750 h grátis cobrem um serviço sempre acordado, não dois. |
+| Relay WebCodecs + WS só para o Discord | HLS de baixa latência | Reutiliza o WS aceito pelo proxy. O valor de ~0,3 s citado na decisão original carece de medição reproduzível. |
+| WebCodecs no viewer | MSE | O primeiro caminho usa decoder por codec. Registrar capacidades e resultados por versão do cliente Discord/iOS antes de atribuir suporte a uma plataforma inteira. |
+| Neon para o banco | Postgres do Render | Decisão histórica de hospedagem; rever franquias e custo real conforme uso. |
+| Bot dentro do Blink | Serviço separado | O processo único reduz compute inicial. Isolar o relay ou o bot quando observabilidade e orçamento justificarem. |
+
+## 10. Correções que afetam a próxima implementação
+
+| Premissa histórica | Consequência no projeto revisado |
+|---|---|
+| Código de sala, `channel_id` e `instance_id` podem aparecer em links ou no cliente. | O convite explícito autoriza o viewer; o resolvedor automático da Activity verifica identidade e participação no Discord. `runId` distingue duas transmissões que usaram o mesmo código. [API Discord](https://docs.discord.com/developers/resources/application#get-application-activity-instance) |
+| O servidor fica fora da mídia no caminho P2P direto. | O upload do host é por peer. O relay Discord consome uma cópia do host e uma saída do Render por viewer; dimensionar CPU, memória e GB separadamente. |
+| Ativar o segundo decoder é uma atualização pequena. | Configuração tem estado por trilha. Um pacote de áudio não reinicia o vídeo. Após descongestionamento, só o keyframe compatível recupera o leitor. |
+| Reescrever HTML/JS de produção altera URLs que a PWA guarda. | Manifesto versionado, compatibilidade com a release anterior e SW em espera protegem lives abertas. |
+| Persistir no boot bastaria para o bot acompanhar lives. | O recibo de uma chamada ao Discord pode se perder entre a API e o commit. A fila precisa distinguir envio incerto, fechamento confirmado e reprocessamento. |
+| Escala acompanha o total de cadastros. | O orçamento usa horas-espectador por caminho, pico simultâneo e bitrate. Os cenários e as tarifas estão no [caderno financeiro](08_MONETIZACAO_E_ESCALA.md). |

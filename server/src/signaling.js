@@ -16,6 +16,8 @@ import { config } from './config.js';
 import { areFriends, publicUser } from './friends.js';
 import * as hub from './hub.js';
 import { closeRelay, isRelayPath, relayKey } from './relay.js';
+import { requestIp } from './client-ip.js';
+import { consumeDiscovery } from './limits.js';
 
 const MAX_VIEWERS = 50;
 const MAX_NAME = 24;
@@ -87,7 +89,11 @@ export function attachSignaling(httpServer) {
     try {
       session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     } catch { /* sem sessão = anônimo */ }
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, session));
+    const ip = requestIp(req, config.clientIpHeader);
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.ip = ip;
+      wss.emit('connection', ws, session);
+    });
   });
 
   wss.on('connection', (ws, session) => {
@@ -241,6 +247,14 @@ async function handle(ws, msg) {
 
     case 'viewer-join': {
       if (ws.role) return;
+      // Mesma cota de "descoberta" de /api/rooms e /relay/view: evita testar
+      // códigos em sequência. viewer-resume (reconexão) não conta.
+      const quota = await consumeDiscovery(ws.ip);
+      if (!quota.ok) {
+        hub.send(ws, { type: 'error', message: `Muitas tentativas. Espera ${quota.retryAfterSec}s e tenta de novo.` });
+        return;
+      }
+      if (ws.role) return; // outra mensagem entrou enquanto esperava
       const code = clean(msg.roomCode, 6).toUpperCase();
       const room = rooms.get(code);
       if (!room) { hub.send(ws, { type: 'error', message: 'Sala não encontrada ou host offline.' }); return; }

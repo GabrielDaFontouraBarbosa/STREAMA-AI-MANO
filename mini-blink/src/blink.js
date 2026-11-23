@@ -9,7 +9,9 @@ export function normalizeCode(input) {
   return m ? m[1].toUpperCase() : null;
 }
 
-export function createBlinkClient(baseUrl, { fetchImpl = fetch, timeoutMs = 8000 } = {}) {
+// `secret` (MINI_BLINK_SECRET) isenta as consultas do bot do limite de
+// descoberta de salas do Blink: ele acompanha as lives o tempo todo.
+export function createBlinkClient(baseUrl, { fetchImpl = fetch, timeoutMs = 8000, secret = '' } = {}) {
   const base = String(baseUrl || '').replace(/\/+$/, '');
   if (!/^https?:\/\//.test(base)) throw new Error('BLINK_URL inválida — use algo como https://seu-blink.onrender.com');
 
@@ -17,14 +19,14 @@ export function createBlinkClient(baseUrl, { fetchImpl = fetch, timeoutMs = 8000
     base,
     roomUrl: (code) => `${base}/s/${code}`,
 
-    // Liga a instância/canal da Activity a uma sala (precisa do MINI_BLINK_SECRET).
-    async link({ code, instanceId, channelId, secret }) {
+    // Liga a instância da Activity a uma sala (precisa do MINI_BLINK_SECRET).
+    async link({ code, instanceId, secret }) {
       if (!secret) return false;
       try {
         const res = await fetchImpl(`${base}/api/discord/link`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, instanceId, channelId }),
+          body: JSON.stringify({ code, instanceId }),
           signal: AbortSignal.timeout(timeoutMs),
         });
         return res.ok;
@@ -36,7 +38,10 @@ export function createBlinkClient(baseUrl, { fetchImpl = fetch, timeoutMs = 8000
     // true = no ar, false = fechada, null = não deu pra saber (Blink fora/dormindo).
     async isOpen(code) {
       try {
-        const res = await fetchImpl(`${base}/api/rooms/${code}`, { signal: AbortSignal.timeout(timeoutMs) });
+        const res = await fetchImpl(`${base}/api/rooms/${code}`, {
+          headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+          signal: AbortSignal.timeout(timeoutMs),
+        });
         if (!res.ok) return null;
         const data = await res.json();
         return typeof data.open === 'boolean' ? data.open : null;
