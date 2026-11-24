@@ -699,6 +699,13 @@ body.in-room .stage { max-height: calc(100svh - 250px); }
 .support-link { color: var(--teal-up); text-decoration: none; font-weight: 600; }
 .support-link:hover { text-decoration: underline; }
 .support-link[hidden] { display: none; }
+button.support-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.support { border: 0; border-radius: 16px; padding: 0; max-width: min(92vw, 340px); background: var(--panel, #161616); color: inherit; }
+.support::backdrop { background: rgba(0, 0, 0, .6); }
+.support-inner { padding: 22px; display: grid; gap: 12px; justify-items: center; text-align: center; }
+.support-inner h2 { margin: 0; font-size: 1.2rem; }
+.support-sub { margin: 0; opacity: .8; font-size: .92rem; }
+.support-qr { width: 240px; max-width: 100%; height: auto; background: #fff; border-radius: 8px; }
 
 /* ── Áudio: avisos na tela ────────────────────────────────── */
 .stage-flag {

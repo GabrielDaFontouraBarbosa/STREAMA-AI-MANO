@@ -402,6 +402,11 @@ const account = (function () {
     if (site.supportUrl) { support.href = site.supportUrl; support.hidden = false; }
   }
 
+  // Botão "Apoiar o Blink": abre a janela com o QR PIX (e o link, se houver).
+  const supportDlg = $('#support');
+  $('#support-btn').onclick = () => supportDlg.showModal();
+  $('#support-close').onclick = () => supportDlg.close();
+
   // Entrar (ou criar conta) com o Discord.
   $('#auth-discord').onclick = async () => {
     try {
