@@ -68,6 +68,24 @@ describe('front do site', { skip: skipReason }, () => {
     }
   });
 
+  test('Apoiar o Blink abre a janela com o QR PIX e fecha', async () => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(server.base + '/');
+      await page.click('#support-btn');
+      await page.waitForSelector('#support[open]');
+      const qr = await page.evaluate(() => {
+        const img = document.querySelector('.support-qr');
+        return { loaded: img.complete && img.naturalWidth > 0, w: img.getBoundingClientRect().width };
+      });
+      assert.ok(qr.loaded && qr.w > 100, `QR não apareceu: ${JSON.stringify(qr)}`);
+      await page.click('#support-close');
+      assert.equal(await page.evaluate(() => document.querySelector('#support').open), false);
+    } finally {
+      await page.close();
+    }
+  });
+
   test('convite: HTML inicial com título de convite, imagem absoluta e sem cache', async () => {
     const r = await fetch(`${server.base}/?sala=abc123`);
     const html = await r.text();

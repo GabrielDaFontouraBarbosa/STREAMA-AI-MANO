@@ -38,6 +38,10 @@ mesmo processo Node.
 - **PR #3:**
   - IP do cliente vindo só do proxy (limite de login);
   - botão do Discord com status atual.
+- **PR #5** (outra sessão): "Apoiar o Blink" abre uma janela com QR PIX
+  (`public/apoio-qr.png`, conferido: PIX válido, CRC ok, sem valor fixo).
+  No merge com o PR #4 ficou a janela + o rodapé novo, com ícone em vez de
+  emoji; E2E da janela em `tests/e2e/front.e2e.js`.
 
 **Em revisão — PR #4** (`claude/modest-dijkstra-zeqyy1`), melhorias pontuais
 do caderno 01:
