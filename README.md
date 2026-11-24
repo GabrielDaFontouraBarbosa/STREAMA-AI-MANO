@@ -36,6 +36,23 @@ server/
 public/               a página (index.html, app.js, styles.css, sw.js)
 ```
 
+## Documentação
+
+Os documentos de planejamento ficam em [`docs/blink/`](docs/blink/). Comece por
+[`MELHORIAS.md`](docs/blink/MELHORIAS.md) (fila de PRs) e
+[`ARQUITETURA.md`](docs/blink/ARQUITETURA.md); as escolhas de dependências
+estão em [`01_ESCOLHAS_TECNICAS.md`](docs/blink/01_ESCOLHAS_TECNICAS.md).
+
+## Testes
+
+```bash
+npm install                         # raiz (Playwright dos testes)
+npm test                            # unitários + contratos dos docs + bot
+DATABASE_URL=postgres://… npm run test:e2e   # ponta a ponta (Chromium + Postgres real)
+```
+
+O CI (`.github/workflows/ci.yml`) roda os dois a cada PR.
+
 ## Mini Blink (Discord)
 
 Bot que anuncia a live no Discord e deixa assistir **dentro do próprio

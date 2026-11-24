@@ -8,7 +8,7 @@
  * Suba o CACHE ao mudar a lista de arquivos do shell.
  */
 
-const CACHE = 'blink-v3';
+const CACHE = 'blink-v4';
 const SHELL = [
   './',
   './index.html',
@@ -59,7 +59,8 @@ self.addEventListener('fetch', (e) => {
         // Só guarda resposta boa. Sem esse teste, um 404 ou um 500 passageiro
         // virava a versão "offline" do arquivo e o usuário continuava vendo
         // o erro mesmo depois da rede voltar.
-        if (res.ok && res.type === 'basic') {
+        // Resposta marcada no-store (o convite /?sala=) também não.
+        if (res.ok && res.type === 'basic' && !/no-store/.test(res.headers.get('Cache-Control') || '')) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
         }

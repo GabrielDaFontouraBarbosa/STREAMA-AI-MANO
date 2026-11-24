@@ -40,7 +40,7 @@ export function startBot(env = process.env, { dataDir = DEFAULT_DATA_DIR } = {})
   const MAX_LIVE_MS = 12 * 60 * 60 * 1000; // anúncio esquecido some sozinho depois de 12h
   const CLOSED_CHECKS_TO_END = 2;          // evita encerrar por um soluço do Blink
 
-  const blink = createBlinkClient(env.BLINK_URL);
+  const blink = createBlinkClient(env.BLINK_URL, { secret: env.MINI_BLINK_SECRET || '' });
   const store = createStore(path.join(dataDir, 'lives.json'));
 
   const commands = [
@@ -95,8 +95,6 @@ export function startBot(env = process.env, { dataDir = DEFAULT_DATA_DIR } = {})
       closedChecks: 0,
       activity: ACTIVITY,
     };
-    // Plano B pra Activity: abrindo neste canal, já sabe a sala.
-    if (ACTIVITY) blink.link({ code, channelId: channel.id, secret: SECRET });
     const payload = liveMessage(live);
     // Menção só pra aparecer o nome clicável; allowedMentions vazio = ninguém é pingado.
     if (mention) payload.content = `<@${userId}> abriu uma live!`;
@@ -192,7 +190,7 @@ export function startBot(env = process.env, { dataDir = DEFAULT_DATA_DIR } = {})
     const code = interaction.customId.slice(WATCH_PREFIX.length).toUpperCase();
     const res = await interaction.launchActivity({ withResponse: true });
     const instanceId = res?.resource?.activityInstance?.id;
-    await blink.link({ code, instanceId, channelId: interaction.channelId, secret: SECRET });
+    await blink.link({ code, instanceId, secret: SECRET });
   }
 
   client.on(Events.InteractionCreate, async (interaction) => {

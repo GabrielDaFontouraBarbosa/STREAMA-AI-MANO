@@ -13,6 +13,8 @@
      4. a pessoa digita o código
    ═══════════════════════════════════════════════════════════ */
 
+import { audioDecoderConfig, createFailureTracker, mergeConfig } from './player-logic.js';
+
 const ROOM_RE = /^[0-9A-F]{6}$/;
 const KIND_VIDEO = 1;
 const KIND_AUDIO = 2;
@@ -25,7 +27,9 @@ const ctx2d = canvas.getContext('2d');
 const params = new URLSearchParams(location.search);
 const inDiscord = params.has('frame_id');
 
-const stats = { videoFrames: 0, audioChunks: 0, keyRequests: 0, codec: null, state: 'boot' };
+const SLOW_START_MS = 8000; // sem imagem nesse tempo: oferece abrir no navegador
+
+const stats = { videoFrames: 0, audioChunks: 0, keyRequests: 0, videoDecoders: 0, codec: null, state: 'boot' };
 window.__miniBlink = stats; // usado nos testes automatizados
 
 let sdk = null;
@@ -34,12 +38,13 @@ let publicUrl = location.origin; // trocado pelo endereço real do Blink (/api/d
 
 /* ── UI ──────────────────────────────────────────────────── */
 
-function panel(title, msg, { form = false, actions = false } = {}) {
+function panel(title, msg, { form = false, actions = false, retry = false } = {}) {
   $('#panel').hidden = false;
   $('#title').textContent = title;
   $('#msg').textContent = msg;
   $('#code-form').hidden = !form;
   $('#actions').hidden = !actions || !roomCode;
+  $('#retry-video').hidden = !retry;
 }
 
 function showVideo() {
@@ -108,9 +113,10 @@ async function findRoom() {
   const custom = String(sdk.customId ?? '').toUpperCase();
   if (ROOM_RE.test(custom)) return custom;
 
-  const q = new URLSearchParams();
-  if (sdk.instanceId) q.set('instance', sdk.instanceId);
-  if (sdk.channelId) q.set('channel', sdk.channelId);
+  // Só pela instância (vem do botão do bot). O ID do canal é público: por ele
+  // qualquer um acharia o código da sala.
+  if (!sdk.instanceId) return null;
+  const q = new URLSearchParams({ instance: sdk.instanceId });
   // O bot avisa o Blink logo depois de abrir a Activity: pode chegar um
   // pouco depois desta página. Tenta algumas vezes antes de pedir o código.
   for (let i = 0; i < 4; i++) {
@@ -156,14 +162,29 @@ function playAudio(data) {
   playhead += buf.duration;
 }
 
+function markNoAudio(on, text = 'Live sem som') {
+  stats.noAudio = on;
+  $('#noaudio').textContent = text;
+  $('#noaudio').hidden = !on;
+  if (on) $('#sound').hidden = true;
+}
+
 async function setupAudio(cfg) {
   audioDecoder?.state !== 'closed' && audioDecoder?.close();
   audioDecoder = null;
   if (!cfg || typeof AudioDecoder === 'undefined') return;
-  const conf = { codec: cfg.codec, sampleRate: cfg.sampleRate, numberOfChannels: cfg.numberOfChannels };
+  stats.audioConfigs = (stats.audioConfigs ?? 0) + 1;
+  markNoAudio(false);
+  const conf = audioDecoderConfig(cfg);
   const ok = await AudioDecoder.isConfigSupported(conf).then((r) => r.supported, () => false);
-  if (!ok) return;
-  audioDecoder = new AudioDecoder({ output: playAudio, error: () => { audioDecoder = null; } });
+  stats.audioSupported = ok;
+  if (!ok) { markNoAudio(true, 'Som não abriu aqui'); return; }
+  // Erro do decoder (inclusive config recusada no configure): avisa em vez
+  // de deixar o som sumir calado.
+  audioDecoder = new AudioDecoder({
+    output: playAudio,
+    error: (e) => { stats.audioError = e?.message ?? 'erro'; audioDecoder = null; markNoAudio(true, 'Som não abriu aqui'); },
+  });
   audioDecoder.configure(conf);
   if (!audioCtx || audioCtx.state !== 'running') $('#sound').hidden = false;
 }
@@ -172,8 +193,12 @@ async function setupAudio(cfg) {
 
 let videoDecoder = null;
 let videoConf = null;
+let videoGen = 0; // muda a cada config de vídeo: descarta resultado atrasado
 let waitingKey = true;
 let ws = null;
+let config = { video: null, audio: null }; // a config atual, por trilha
+let slowTimer = null;
+const failures = createFailureTracker();
 
 function drawFrame(frame) {
   if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
@@ -183,7 +208,8 @@ function drawFrame(frame) {
   ctx2d.drawImage(frame, 0, 0);
   frame.close();
   stats.videoFrames++;
-  if (stats.videoFrames === 1) { stats.state = 'playing'; showVideo(); }
+  failures.frame();
+  if (stats.videoFrames === 1) { clearTimeout(slowTimer); stats.state = 'playing'; showVideo(); }
 }
 
 function askKeyframe() {
@@ -192,30 +218,71 @@ function askKeyframe() {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'keyframe' }));
 }
 
+function closeVideoDecoder() {
+  try { videoDecoder?.state !== 'closed' && videoDecoder?.close(); } catch { /* ok */ }
+  videoDecoder = null;
+}
+
 function resetVideoDecoder() {
   if (!videoConf) return;
-  try { videoDecoder?.state !== 'closed' && videoDecoder?.close(); } catch { /* ok */ }
-  videoDecoder = new VideoDecoder({ output: drawFrame, error: () => { resetVideoDecoder(); askKeyframe(); } });
+  closeVideoDecoder();
+  const gen = videoGen;
+  videoDecoder = new VideoDecoder({ output: drawFrame, error: () => onVideoError(gen) });
   videoDecoder.configure(videoConf);
+  stats.videoDecoders++;
   waitingKey = true;
 }
 
+// Erro do decoder: tenta de novo algumas vezes; depois para e oferece o
+// navegador, em vez de ficar reiniciando para sempre.
+function onVideoError(gen) {
+  if (gen !== videoGen) return; // erro de um decoder já substituído
+  if (failures.fail() === 'retry') { resetVideoDecoder(); askKeyframe(); return; }
+  closeVideoDecoder();
+  stats.state = 'video-failed';
+  hideVideo();
+  panel('O vídeo não abriu no Discord', 'Este aparelho não conseguiu mostrar a live aqui. Abra no navegador.', { actions: true, retry: true });
+}
+
+$('#retry-video').onclick = () => {
+  failures.reset();
+  resetVideoDecoder();
+  askKeyframe();
+  panel('Mini Blink', 'Tentando de novo…');
+};
+
 async function setupVideo(cfg) {
-  if (!cfg) return;
+  const gen = ++videoGen;
+  if (!cfg) { closeVideoDecoder(); videoConf = null; return; }
   if (typeof VideoDecoder === 'undefined') {
     panel('Seu Discord não suporta', 'Este aparelho não tem WebCodecs. Abra a live no navegador.', { actions: true });
     return;
   }
   const conf = { codec: cfg.codec, codedWidth: cfg.width, codedHeight: cfg.height, optimizeForLatency: true };
   const ok = await VideoDecoder.isConfigSupported(conf).then((r) => r.supported, () => false);
+  if (gen !== videoGen) return; // chegou outra config enquanto checava
   if (!ok) {
     panel('Formato não suportado', `Este aparelho não decodifica ${cfg.codec}. Abra a live no navegador.`, { actions: true });
     return;
   }
   stats.codec = cfg.codec;
   videoConf = conf;
+  failures.reset();
   resetVideoDecoder();
   askKeyframe();
+}
+
+// O host avisou que não consegue mandar uma trilha.
+const UNSUPPORTED_VIDEO = {
+  browser: 'Quem transmite está num navegador que não manda vídeo pro Discord (precisa ser Chrome ou Edge).',
+  codec: 'O navegador de quem transmite não conseguiu codificar o vídeo pro Discord.',
+};
+function onUnsupported(m) {
+  if (m.track === 'audio') { markNoAudio(true); return; }
+  clearTimeout(slowTimer);
+  stats.state = 'unsupported';
+  hideVideo();
+  panel('Não dá pra assistir aqui', `${UNSUPPORTED_VIDEO[m.reason] ?? UNSUPPORTED_VIDEO.codec} Abra a live no navegador.`, { actions: true });
 }
 
 function onPacket(buf) {
@@ -232,7 +299,9 @@ function onPacket(buf) {
     // Decodificador ficou pra trás (aparelho fraco): zera e pede keyframe.
     if (videoDecoder.decodeQueueSize > 12) { resetVideoDecoder(); askKeyframe(); return; }
     videoDecoder.decode(new EncodedVideoChunk({ type: isKey ? 'key' : 'delta', timestamp, data }));
-  } else if (kind === KIND_AUDIO && audioDecoder?.state === 'configured') {
+  } else if (kind === KIND_AUDIO) {
+    stats.audioPackets = (stats.audioPackets ?? 0) + 1;
+    if (audioDecoder?.state !== 'configured') return;
     stats.audioChunks++;
     audioDecoder.decode(new EncodedAudioChunk({ type: 'key', timestamp, data }));
   }
@@ -269,20 +338,36 @@ async function connect() {
     clearInterval(pingTimer);
     pingTimer = setInterval(() => sock.readyState === WebSocket.OPEN && sock.send('{"type":"ping"}'), 20000);
     if (stats.videoFrames === 0) panel('Mini Blink', 'Esperando a imagem do host…');
+    // Demorou demais: oferece o navegador sem parar de esperar.
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(() => {
+      if (stats.videoFrames === 0 && stats.state === 'connecting') {
+        panel('Mini Blink', 'A imagem está demorando. Dá pra abrir no navegador enquanto isso.', { actions: true });
+      }
+    }, SLOW_START_MS);
   };
 
   sock.onmessage = async (ev) => {
     if (typeof ev.data !== 'string') { onPacket(ev.data); return; }
     let m;
     try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'config') { await setupVideo(m.video); await setupAudio(m.audio); }
-    if (m.type === 'status' && !m.publishing && stats.videoFrames === 0) panel('Mini Blink', 'Esperando o host mandar a imagem… (quem transmite precisa estar no Chrome ou no Edge)');
+    if (m.type === 'config') {
+      // Por trilha: uma config que só muda o áudio não reinicia o vídeo.
+      const { next, reconfigureVideo, reconfigureAudio } = mergeConfig(config, m);
+      config = next;
+      if (reconfigureVideo) await setupVideo(next.video);
+      if (reconfigureAudio) await setupAudio(next.audio);
+    }
+    if (m.type === 'unsupported') onUnsupported(m);
+    if (m.type === 'status' && !m.publishing && stats.videoFrames === 0 && stats.state !== 'unsupported') panel('Mini Blink', 'Esperando o host mandar a imagem… (quem transmite precisa estar no Chrome ou no Edge)');
     if (m.type === 'ended') { ended = true; stats.state = 'ended'; hideVideo(); panel('A live acabou', 'Valeu por colar!'); }
   };
 
   sock.onclose = () => {
     if (ws !== sock) return;
     clearInterval(pingTimer);
+    clearTimeout(slowTimer);
+    config = { video: null, audio: null }; // a conexão nova recebe a config de novo
     if (ended) return;
     stats.state = 'reconnecting';
     hideVideo();

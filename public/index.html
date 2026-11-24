@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Blink — sua tela ao vivo, direto do navegador</title>
-  <meta name="description" content="Compartilhe sua tela ou câmera ao vivo com a galera via WebRTC. Ponto a ponto, sem instalar nada." />
+  <title>Blink · sua tela ao vivo pros amigos</title>
+  <meta name="description" content="Abre uma sala, manda o link e seus amigos assistem sua tela ou câmera ao vivo, no navegador. Sem instalar nada." />
 
   <meta name="theme-color" content="#090F11" />
 
@@ -16,13 +16,14 @@
   <meta name="apple-mobile-web-app-title" content="Blink" />
 
   <meta property="og:title" content="Blink" />
-  <meta property="og:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
+  <meta property="og:description" content="Sua tela ou câmera ao vivo pros amigos, no navegador. Sem instalar nada." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Blink" />
+  <meta property="og:url" content="/" />
   <meta property="og:image" content="icon-512.png" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Blink" />
-  <meta name="twitter:description" content="Sua tela ao vivo pra geral. P2P, sem instalar nada." />
+  <meta name="twitter:description" content="Sua tela ou câmera ao vivo pros amigos, no navegador. Sem instalar nada." />
   <meta name="twitter:image" content="icon-512.png" />
 
   <!-- fontes servidas daqui mesmo: o CSS do Google Fonts levava 2s e travava a 1ª pintura -->
@@ -55,6 +56,10 @@
   <symbol id="i-swap" viewBox="0 0 24 24"><path d="M2 9l3-3 3 3M13 18H7a2 2 0 0 1-2-2V6M22 15l-3 3-3-3M11 6h6a2 2 0 0 1 2 2v10"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <!-- marca do Discord: preenchida, não traço -->
+  <symbol id="i-discord" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.292a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.1.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></symbol>
 </svg>
 
 <a href="#console" class="skip">Pular para o console</a>
@@ -65,11 +70,17 @@
     <span class="brand-name">Blink</span>
   </a>
   <div class="topbar-right">
-    <span id="me-chip" class="me-chip" hidden><span class="avatar" id="me-avatar"></span><span id="me-name"></span></span>
+    <div id="account" class="account" hidden>
+      <button id="me-chip" class="me-chip" type="button" aria-expanded="false" aria-controls="account-menu"><span class="avatar" id="me-avatar" aria-hidden="true"></span><span id="me-name"></span></button>
+      <div id="account-menu" class="account-menu" hidden>
+        <div class="account-id"><strong id="menu-name"></strong><span id="menu-user" class="mono"></span></div>
+        <button id="discord-btn" class="menu-item" type="button" hidden><svg class="ic"><use href="#i-discord"/></svg><span id="discord-label">Conectar Discord</span></button>
+        <button id="menu-copy-link" class="menu-item" type="button"><svg class="ic"><use href="#i-copy"/></svg>Copiar meu link</button>
+        <button id="logout-btn" class="menu-item" type="button"><svg class="ic"><use href="#i-logout"/></svg>Sair</button>
+      </div>
+    </div>
     <button id="login-btn" class="btn btn-ghost btn-sm" hidden>Entrar</button>
     <button id="signup-btn" class="btn btn-outline btn-sm" data-open-auth hidden>Criar conta</button>
-    <button id="discord-btn" class="btn btn-ghost btn-sm" type="button" hidden>Conectar Discord</button>
-    <button id="logout-btn" class="btn btn-ghost btn-sm" hidden>Sair</button>
   </div>
 </header>
 
@@ -79,9 +90,9 @@
   <section class="hero">
     <h1 class="blink-title">
       <span class="lid lid-top" aria-hidden="true"></span><span class="lid lid-bot" aria-hidden="true"></span>
-      Sua tela,<br>ao vivo,<br>pra geral.
+      Sua tela,<br class="br-wide"> ao vivo,<br class="br-wide"> pra geral.
     </h1>
-    <p class="lede">Abre uma sala, manda o código pros amigos e pronto. O vídeo vai do seu navegador direto pro deles, sem servidor no meio, em menos de um segundo.</p>
+    <p class="lede">Abre uma sala, manda o link e seus amigos assistem sua tela ou câmera. Pelo navegador ou dentro do Discord, sem instalar nada.</p>
   </section>
 
   <!-- ── painel de ação ────────────────────────────────── -->
@@ -96,20 +107,23 @@
       </div>
 
       <!-- estado da conexão: só importa dentro da sala -->
-      <div class="console-head">
-        <span id="room-tag" class="label-micro">Sem sala</span>
-        <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label">offline</span></span>
+      <div class="console-head" hidden>
+        <span id="room-tag" class="label-micro"></span>
+        <span id="net-pill" class="pill" data-state="idle"><span class="pill-dot"></span><span id="net-label"></span></span>
       </div>
 
       <!-- ── TRANSMITIR ────────────────────────────────── -->
       <section id="pane-host" class="pane active" role="tabpanel" aria-labelledby="tab-host" tabindex="0">
 
-        <div id="host-setup" class="stack">
-          <div class="field" id="host-name-field">
-            <label for="host-name">Seu nome</label>
-            <input id="host-name" placeholder="Como a galera vai te ver" maxlength="24" autocomplete="nickname" />
-          </div>
+        <div id="host-guest" class="host-guest" hidden>
+          <h2 class="host-guest-title">Entre para transmitir</h2>
+          <p>Pra abrir uma sala você precisa de conta. Pra assistir, não: use o link ou o código na aba Assistir.</p>
+          <button id="host-guest-discord" class="btn btn-discord btn-block btn-lg" type="button" hidden><svg class="ic"><use href="#i-discord"/></svg>Entrar com Discord</button>
+          <button id="host-guest-login" class="btn btn-outline btn-block btn-lg" type="button">Entrar com e-mail ou usuário</button>
+          <p class="host-guest-alt">Primeira vez? <button type="button" class="linkbtn" data-open-auth>Criar conta</button></p>
+        </div>
 
+        <div id="host-setup" class="stack">
           <div class="field">
             <label>O que transmitir</label>
             <div class="segmented" data-group="mode">
@@ -212,7 +226,7 @@
             <div id="tuning" class="tuning"><span></span><span></span><span></span><p>Sintonizando…</p></div>
             <video id="remote-video" class="stage" autoplay playsinline></video>
             <span id="viewer-noaudio" class="stage-flag" hidden>Live sem som: o host não está mandando áudio</span>
-            <button id="viewer-unmute" class="unmute-cta" type="button" hidden>🔊 Toque pra ouvir</button>
+            <button id="viewer-unmute" class="unmute-cta" type="button" hidden><svg class="ic"><use href="#i-vol"/></svg>Toque pra ouvir</button>
           </div>
           <div class="ctrlbar">
             <button id="viewer-fs" class="iconbtn" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-expand"/></svg></button>
@@ -296,14 +310,14 @@
 </main>
 
 <footer class="foot">
-  <span>Sua tela ao vivo num piscar de olhos.</span>
-  <span>O vídeo vai direto de um navegador pro outro.</span>
-  <button type="button" id="support-btn" class="support-link linkbtn">Apoiar o Blink ❤</button>
+  <span>Blink · live de tela pros amigos</span>
+  <span id="foot-status" class="foot-status mono" hidden></span>
+  <button type="button" id="support-btn" class="support-link linkbtn"><svg class="ic"><use href="#i-heart"/></svg>Apoiar o Blink</button>
 </footer>
 
 <dialog id="support" class="support" aria-labelledby="support-title">
   <div class="support-inner">
-    <h2 id="support-title">Apoie o Blink ❤</h2>
+    <h2 id="support-title">Apoie o Blink</h2>
     <p class="support-sub">Escaneie o QR code no app do seu banco (PIX).</p>
     <img class="support-qr" src="apoio-qr.png" alt="QR code PIX para apoiar o Blink" width="240" height="240" />
     <a id="support-link" class="btn btn-ghost btn-sm" href="#" target="_blank" rel="noopener" hidden>Abrir página de apoio</a>

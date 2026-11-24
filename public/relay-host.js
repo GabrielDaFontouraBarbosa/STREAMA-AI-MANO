@@ -74,6 +74,9 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
   let forceKey = false;
   let videoCfg = null;
   let audioCfg = null;
+  const notes = new Map(); // trilha → aviso de "não consigo mandar" (reenviado ao reconectar)
+  // Contadores por etapa (diagnóstico: onde a mídia para, se parar).
+  const counters = { videoChunks: 0, audioFrames: 0, audioChunks: 0, audioDropped: 0, audioEncoderErrors: 0 };
 
   const open = () => ws && ws.readyState === WebSocket.OPEN;
 
@@ -85,6 +88,15 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     send(JSON.stringify({ type: 'config', video: videoCfg, audio: audioCfg }));
   }
 
+  // Avisa quem assiste pelo Discord que esta trilha não vai chegar, em vez
+  // de deixar a pessoa esperando. reason: 'browser' | 'codec' | 'none'.
+  function unsupported(track, reason) {
+    const note = JSON.stringify({ type: 'unsupported', track, reason });
+    notes.set(track, note);
+    send(note);
+    log(`relay: sem ${track === 'video' ? 'vídeo' : 'áudio'} pro Discord (${reason})`);
+  }
+
   function connect() {
     clearTimeout(retryTimer);
     if (stopped) return;
@@ -93,7 +105,11 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     sock.binaryType = 'arraybuffer';
     ws = sock;
 
-    sock.onopen = () => { retry = 0; if (session) sendConfig(); };
+    sock.onopen = () => {
+      retry = 0;
+      if (session) sendConfig();
+      for (const note of notes.values()) sock.send(note);
+    };
     sock.onmessage = (ev) => {
       if (typeof ev.data !== 'string') return;
       let m;
@@ -143,11 +159,12 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
         if (!encoder || want.width !== dims.width || want.height !== dims.height) {
           encoder?.close();
           const cfg = await pickVideoConfig(want.width, want.height);
-          if (!cfg) { frame.close(); log('relay: nenhum codec de vídeo disponível'); break; }
+          if (!cfg) { frame.close(); unsupported('video', 'codec'); break; }
           dims = want;
           encoder = new VideoEncoder({
             output: (chunk) => {
               if (open() && ws.bufferedAmount > SOCKET_BACKLOG && chunk.type !== 'key') { forceKey = true; return; }
+              counters.videoChunks++;
               send(packet(KIND_VIDEO, chunk.type === 'key', chunk.timestamp, chunk));
             },
             error: (e) => log('relay: encoder', e.message),
@@ -185,7 +202,7 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
   /* ── áudio ─────────────────────────────────────────────── */
 
   async function runAudio(s, track) {
-    if (typeof AudioEncoder === 'undefined') return;
+    if (typeof AudioEncoder === 'undefined') { unsupported('audio', 'codec'); return; }
     const processor = new MediaStreamTrackProcessor({ track });
     const reader = processor.readable.getReader();
     s.readers.push(reader);
@@ -195,6 +212,7 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
       while (s.alive) {
         const { value: data, done } = await reader.read();
         if (done || !s.alive) { data?.close(); break; }
+        counters.audioFrames++;
         if (!encoder) {
           const cfg = {
             codec: 'opus',
@@ -203,13 +221,14 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
             bitrate: AUDIO_BPS,
           };
           const { supported } = await AudioEncoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
-          if (!supported) { data.close(); log('relay: sem Opus, seguindo só com vídeo'); break; }
+          if (!supported) { data.close(); unsupported('audio', 'codec'); break; }
           encoder = new AudioEncoder({
             output: (chunk) => {
-              if (open() && ws.bufferedAmount > SOCKET_BACKLOG) return;
+              if (open() && ws.bufferedAmount > SOCKET_BACKLOG) { counters.audioDropped++; return; }
+              counters.audioChunks++;
               send(packet(KIND_AUDIO, true, chunk.timestamp, chunk));
             },
-            error: (e) => log('relay: áudio', e.message),
+            error: (e) => { counters.audioEncoderErrors++; log('relay: áudio', e.message); },
           });
           s.closers.push(() => encoder.state !== 'closed' && encoder.close());
           encoder.configure(cfg);
@@ -228,7 +247,11 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
   /* ── ciclo de vida ─────────────────────────────────────── */
 
   function startPipelines() {
-    if (!stream || !relaySupported()) return;
+    if (!stream) return;
+    notes.clear();
+    // Firefox/Safari: sem MediaStreamTrackProcessor/VideoEncoder. Conecta
+    // mesmo assim só pra avisar quem está no Discord.
+    if (!relaySupported()) { unsupported('video', 'browser'); return; }
     const s = { alive: true, readers: [], closers: [], clones: [] };
     session = s;
     videoCfg = null;
@@ -237,7 +260,7 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     const v = stream.getVideoTracks()[0]?.clone();
     const a = stream.getAudioTracks()[0]?.clone();
     if (v) { s.clones.push(v); runVideo(s, v); }
-    if (a) { s.clones.push(a); runAudio(s, a); }
+    if (a) { s.clones.push(a); runAudio(s, a); } else unsupported('audio', 'none');
     log('relay: transmitindo pro Discord');
   }
 
@@ -255,14 +278,14 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     supported: relaySupported,
 
     start(opts) {
-      if (!relaySupported() || !opts?.relayKey || !opts?.roomCode) return false;
+      if (!opts?.relayKey || !opts?.roomCode) return false;
       stream = opts.stream;
       const same = !stopped && roomCode === opts.roomCode && key === opts.relayKey && ws;
       roomCode = opts.roomCode;
       key = opts.relayKey;
       stopped = false;
       if (!same) { ws?.close(); ws = null; retry = 0; connect(); }
-      return true;
+      return relaySupported();
     },
 
     // Fonte trocada (tela ↔ câmera): recomeça a codificação com a track nova.
@@ -282,5 +305,6 @@ export function createRelayPublisher({ onViewers = () => {}, log = () => {} } = 
     },
 
     get viewers() { return demand; },
+    get stats() { return { ...counters, demand, audioCfg }; },
   };
 }
