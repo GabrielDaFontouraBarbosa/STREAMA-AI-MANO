@@ -298,8 +298,18 @@
 <footer class="foot">
   <span>Sua tela ao vivo num piscar de olhos.</span>
   <span>O vídeo vai direto de um navegador pro outro.</span>
-  <a id="support-link" class="support-link" href="#" target="_blank" rel="noopener" hidden>Apoiar o Blink ❤</a>
+  <button type="button" id="support-btn" class="support-link linkbtn">Apoiar o Blink ❤</button>
 </footer>
+
+<dialog id="support" class="support" aria-labelledby="support-title">
+  <div class="support-inner">
+    <h2 id="support-title">Apoie o Blink ❤</h2>
+    <p class="support-sub">Escaneie o QR code no app do seu banco (PIX).</p>
+    <img class="support-qr" src="apoio-qr.png" alt="QR code PIX para apoiar o Blink" width="240" height="240" />
+    <a id="support-link" class="btn btn-ghost btn-sm" href="#" target="_blank" rel="noopener" hidden>Abrir página de apoio</a>
+    <button type="button" class="btn btn-ghost btn-sm" id="support-close">Fechar</button>
+  </div>
+</dialog>
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
